@@ -327,6 +327,13 @@ def clear_latest():
 
 
 def main():
+    import sys
+    if "--tui" in sys.argv:
+        from tui import run_tui
+        import curses
+        curses.wrapper(run_tui)
+        return
+
     os.makedirs("templates", exist_ok=True)
     os.makedirs("output", exist_ok=True)
     print("=" * 50)
@@ -337,6 +344,7 @@ def main():
     print("  网络访问: http://<本机IP>:5000")
     print("  " + "=" * 46)
     print("  提示: 开始吟诗前请先选择字符集和最大长度")
+    print("  TUI模式: python app.py --tui")
     print("=" * 50)
     from waitress import serve
 
