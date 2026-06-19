@@ -50,7 +50,8 @@ def estimate():
     chars = data.get("chars", "")
     max_len = int(data.get("max_length", 1))
     total = estimate_total(len(chars), max_len)
-    return jsonify({"total": total, "chars_len": len(chars)})
+    total_str = str(total)
+    return jsonify({"total": total_str, "total_raw": total, "chars_len": len(chars)})
 
 
 @app.route("/api/start", methods=["POST"])
@@ -69,7 +70,8 @@ def start():
     total = estimate_total(len(chars), max_len)
     return jsonify({
         "status": "ready",
-        "total": total,
+        "total": str(total),
+        "total_raw": total,
         "chars_len": len(chars),
         "max_length": max_len,
         "session_id": session_id,
@@ -87,7 +89,9 @@ def stop():
 @app.route("/api/stats")
 def stats():
     session_id = request.args.get("session_id", "default")
-    return jsonify(get_session_stats(session_id))
+    stats = get_session_stats(session_id)
+    stats["total"] = str(stats["total"])
+    return jsonify(stats)
 
 
 @app.route("/stream")

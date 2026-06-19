@@ -371,7 +371,17 @@ let displayTimer = null;
 const MAX_DISPLAY = 5000;
 let resultCount = 0;
 
-// Format numbers
+// Format numbers from string (avoid overflow)
+function formatNumStr(s) {
+  const n = s.length;
+  if (n > 16) return s.slice(0, n - 16) + '.' + s.slice(n - 16, n - 14) + '亿亿';
+  if (n > 12) return s.slice(0, n - 12) + '.' + s.slice(n - 12, n - 10) + '万亿';
+  if (n > 8) return s.slice(0, n - 8) + '.' + s.slice(n - 8, n - 6) + '亿';
+  if (n > 4) return s.slice(0, n - 4) + '.' + s.slice(n - 4, n - 2) + '万';
+  return s;
+}
+
+// Format numbers (safe for Number range only)
 function formatNum(n) {
   if (n >= 1e12) return (n / 1e12).toFixed(2) + '万亿';
   if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
@@ -438,27 +448,32 @@ function getCurrentChars() {
 function updateCharsetInfo() {
   const chars = getCurrentChars();
   const maxLen = parseInt(maxLengthInput.value) || 1;
-  // client-side rough estimate (may overflow)
-  let total = 0;
-  let term = 1;
   const n = chars.length;
-  for (let i = 0; i < maxLen; i++) {
-    term *= n;
-    total += term;
-    if (total > Number.MAX_SAFE_INTEGER) {
-      total = Infinity;
-      break;
-    }
-  }
-  document.getElementById('charsetInfo').textContent =
-    `字符数: ${chars.length} | 估算组合: ${total === Infinity ? '∞ (过大)' : formatNum(total)}`;
-  
-  if (total > 1e8 || (total > 1e6 && maxLen > 3)) {
-    warning.textContent = `⚠ 警告: 组合总数约 ${formatNum(total)}，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。`;
-    warning.classList.add('active');
-  } else {
-    warning.classList.remove('active');
-  }
+
+  fetch('/api/estimate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chars, max_length: maxLen })
+  })
+    .then(r => r.json())
+    .then(data => {
+      const totalStr = data.total;
+      document.getElementById('charsetInfo').textContent =
+        `字符数: ${n} | 估算组合: ${formatNumStr(totalStr)}`;
+
+      // Check hugeness by string length and value
+      const isHuge = totalStr.length > 9 || (totalStr.length > 7 && maxLen > 3);
+      if (isHuge) {
+        warning.textContent = `⚠ 警告: 组合总数约 ${formatNumStr(totalStr)}，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。`;
+        warning.classList.add('active');
+      } else {
+        warning.classList.remove('active');
+      }
+    })
+    .catch(() => {
+      document.getElementById('charsetInfo').textContent =
+        `字符数: ${n} | 估算组合: 计算失败`;
+    });
 }
 
 presetSelect.addEventListener('change', updateCharsetInfo);
@@ -539,17 +554,27 @@ function fetchStats() {
   fetch(`/api/stats?session_id=${encodeURIComponent(sessionId)}`)
     .then(r => r.json())
     .then(data => {
-      genCount.textContent = formatNum(data.generated || 0);
-      totalEstimate.textContent = formatNum(data.total || 0);
+      genCount.textContent = formatNumStr(String(data.generated || 0));
+      totalEstimate.textContent = formatNumStr(data.total || '0');
       genRate.textContent = formatNum(Math.round(data.rate || 0));
       genElapsed.textContent = formatTime(data.elapsed || 0);
 
-      if (data.total > 0) {
-        const pct = Math.min((data.generated / data.total) * 100, 100);
-        progressFill.style.width = pct + '%';
-        progressPercent.textContent = pct.toFixed(2) + '%';
-        progressLabel.textContent = isRunning ? '生成中...' : (data.total === data.generated ? '完成！' : '已停止');
+      const gen = parseInt(data.generated) || 0;
+      const totalStr = data.total || '0';
+      if (totalStr.length <= 15) {
+        const total = parseInt(totalStr);
+        if (total > 0) {
+          const pct = Math.min((gen / total) * 100, 100);
+          progressFill.style.width = pct + '%';
+          progressPercent.textContent = pct.toFixed(4) + '%';
+          progressLabel.textContent = isRunning ? '生成中...' : (gen >= total ? '完成！' : '已停止');
+          return;
+        }
       }
+      // For huge numbers, show raw count only
+      progressFill.style.width = '0%';
+      progressPercent.textContent = '—';
+      progressLabel.textContent = isRunning ? `已生成 ${formatNumStr(String(gen))} 条...` : '已停止';
     })
     .catch(() => {});
 }
@@ -650,7 +675,7 @@ async function startGeneration() {
     if (statsTimer) clearInterval(statsTimer);
     statsTimer = setInterval(fetchStats, 200);
 
-    showToast(`开始枚举！组合总数: ${formatNum(data.total)}`, 2000);
+    showToast(`开始枚举！组合总数: ${formatNumStr(data.total)}`, 2000);
   } catch(e) {
     showToast('启动失败: ' + e.message, 3000);
   }
