@@ -5,6 +5,7 @@
 ```bash
 pip install flask waitress
 python3 app.py        # Waitress on :5000, 8 threads
+python3 app.py --tui  # Terminal UI mode (curses, no extra deps)
 ```
 
 No tests, no CI, no linter/typecheck config.
