@@ -7,6 +7,7 @@ import gzip
 import json
 import os
 import threading
+import unicodedata
 from datetime import datetime
 from typing import Dict, Generator, Optional
 
@@ -45,6 +46,21 @@ CJK_THOUSAND = (
     "谓语助者焉哉乎也"
 )
 
+def build_utf8_charset() -> str:
+    chars = []
+    for cp in range(0x20, 0x110000):
+        try:
+            ch = chr(cp)
+            cat = unicodedata.category(ch)
+            if cat and cat[0] in "LMNPS":
+                chars.append(ch)
+        except (ValueError, UnicodeEncodeError):
+            pass
+    return "".join(chars)
+
+
+UTF8_ALL = build_utf8_charset()
+
 PRESETS = {
     "ascii": {
         "label": "ASCII可打印字符",
@@ -75,6 +91,11 @@ PRESETS = {
         "label": "基础表情符号",
         "chars": "😀😂🤣😃😄😅😆😉😊😋😎😍😘🥰😗😙😚🙂🤗🤩🤔🤨😐😑😶🙄😏😣😥😮🤐😯😪😫😴😌😛😜😝🤤😒😓😔😕🙃🤑😲☹️🙁😖😞😟😤😢😭😦😧😨😩🤯😬😰😱🥵🥶😳🤪😵😡😠🤬",
         "description": "48个常用表情符号",
+    },
+    "utf8_all": {
+        "label": "全部UTF-8可打印字符",
+        "chars": UTF8_ALL,
+        "description": f"所有Unicode可打印字符，共{len(UTF8_ALL)}个",
     },
 }
 

@@ -437,19 +437,26 @@ async function loadPresets() {
 function getCurrentChars() {
   const custom = customCharset.value.trim();
   if (custom) return custom;
-  const key = presetSelect.value;
-  return presetsData[key] ? presetsData[key].chars : '';
+  return '';
+}
+
+function getCurrentPreset() {
+  const custom = customCharset.value.trim();
+  if (custom) return '';
+  return presetSelect.value;
 }
 
 function updateCharsetInfo() {
   const chars = getCurrentChars();
+  const preset = getCurrentPreset();
   const maxLen = parseInt(maxLengthInput.value) || 1;
-  const n = chars.length;
+  const n = preset ? '?' : chars.length;
 
+  const payload = preset ? { preset, max_length: maxLen } : { chars, max_length: maxLen };
   fetch('/api/estimate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chars, max_length: maxLen })
+    body: JSON.stringify(payload)
   })
     .then(r => r.json())
     .then(data => {
@@ -477,6 +484,7 @@ maxLengthInput.addEventListener('input', updateCharsetInfo);
 
 // SSE stream
 let currentChars = '';
+let currentPresetName = '';
 let currentMaxLen = 1;
 
 function startStream() {
@@ -485,7 +493,12 @@ function startStream() {
     eventSource = null;
   }
 
-  const url = `/stream?session_id=${encodeURIComponent(sessionId)}&chars=${encodeURIComponent(currentChars)}&max_length=${currentMaxLen}`;
+  let url;
+  if (currentPresetName) {
+    url = `/stream?session_id=${encodeURIComponent(sessionId)}&preset=${encodeURIComponent(currentPresetName)}&max_length=${currentMaxLen}`;
+  } else {
+    url = `/stream?session_id=${encodeURIComponent(sessionId)}&chars=${encodeURIComponent(currentChars)}&max_length=${currentMaxLen}`;
+  }
   eventSource = new EventSource(url);
 
   eventSource.onmessage = (e) => {
@@ -589,11 +602,15 @@ async function saveGeneration() {
   saveFill.style.width = '0%';
   saveText.textContent = '正在枚举并保存...';
 
+  const savePayload = currentPresetName
+    ? { session_id: sessionId, preset: currentPresetName, max_length: currentMaxLen, compress }
+    : { session_id: sessionId, chars: currentChars, max_length: currentMaxLen, compress };
+
   try {
     const resp = await fetch('/api/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, chars: currentChars, max_length: currentMaxLen, compress })
+      body: JSON.stringify(savePayload)
     });
     const data = await resp.json();
     if (data.status === 'saving') {
@@ -624,9 +641,10 @@ async function startGeneration() {
   if (isRunning) return;
 
   currentChars = getCurrentChars();
+  const currentPreset = getCurrentPreset();
   currentMaxLen = parseInt(maxLengthInput.value) || 1;
 
-  if (!currentChars) {
+  if (!currentChars && !currentPreset) {
     showToast('请选择或输入字符集', 3000);
     return;
   }
@@ -647,11 +665,15 @@ async function startGeneration() {
 
   sessionId = 'default_' + Date.now();
 
+  const payload = currentPreset
+    ? { session_id: sessionId, preset: currentPreset, max_length: currentMaxLen }
+    : { session_id: sessionId, chars: currentChars, max_length: currentMaxLen };
+
   try {
     const resp = await fetch('/api/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, chars: currentChars, max_length: currentMaxLen })
+      body: JSON.stringify(payload)
     });
     const data = await resp.json();
     if (data.error) {
@@ -662,6 +684,8 @@ async function startGeneration() {
     isRunning = true;
     updateUI();
 
+    // Store preset for SSE
+    currentPresetName = currentPreset;
     // Start SSE
     startStream();
 

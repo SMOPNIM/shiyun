@@ -27,6 +27,14 @@ _save_tasks: dict = {}
 _save_lock = threading.Lock()
 
 
+def resolve_chars(data: dict) -> str:
+    preset = data.get("preset", "")
+    chars = data.get("chars", "")
+    if not chars and preset in PRESETS:
+        chars = PRESETS[preset]["chars"]
+    return chars
+
+
 @app.route("/")
 def index():
     presets_info = {
@@ -39,15 +47,23 @@ def index():
 @app.route("/api/presets")
 def get_presets():
     return jsonify({
-        k: {"label": v["label"], "chars": v["chars"], "description": v["description"]}
+        k: {"label": v["label"], "description": v["description"]}
         for k, v in PRESETS.items()
     })
+
+
+@app.route("/api/presets/<key>/chars")
+def get_preset_chars(key):
+    preset = PRESETS.get(key)
+    if not preset:
+        return jsonify({"error": "预设不存在"}), 404
+    return jsonify({"chars": preset["chars"]})
 
 
 @app.route("/api/estimate", methods=["POST"])
 def estimate():
     data = request.json
-    chars = data.get("chars", "")
+    chars = resolve_chars(data)
     max_len = int(data.get("max_length", 1))
     total = estimate_total(len(chars), max_len)
     total_str = str(total)
@@ -58,7 +74,7 @@ def estimate():
 def start():
     data = request.json
     session_id = data.get("session_id", "default")
-    chars = data.get("chars", "")
+    chars = resolve_chars(data)
     max_len = int(data.get("max_length", 1))
 
     if not chars:
@@ -97,7 +113,10 @@ def stats():
 @app.route("/stream")
 def stream():
     session_id = request.args.get("session_id", "default")
+    preset = request.args.get("preset", "")
     chars = request.args.get("chars", "")
+    if not chars and preset in PRESETS:
+        chars = PRESETS[preset]["chars"]
     max_len = int(request.args.get("max_length", 1))
 
     if not chars:
@@ -123,7 +142,7 @@ def stream():
 def save():
     data = request.json
     session_id = data.get("session_id", "default")
-    chars = data.get("chars", "")
+    chars = resolve_chars(data)
     max_len = int(data.get("max_length", 1))
     compress = data.get("compress", True)
 
