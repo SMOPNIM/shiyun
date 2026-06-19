@@ -360,6 +360,7 @@
             <label class="mode-option" style="padding:4px 10px;font-size:0.85em"><input type="radio" name="lineLength" value="5" checked><span>五言</span></label>
             <label class="mode-option" style="padding:4px 10px;font-size:0.85em"><input type="radio" name="lineLength" value="7"><span>七言</span></label>
             <input type="number" id="customLineLen" value="5" min="1" max="20" style="width:60px;padding:4px 6px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;text-align:center;font-size:0.85em">
+            <span style="font-size:0.8em;color:var(--text-muted)">自定义</span>
           </div>
         </div>
       </div>
@@ -602,10 +603,10 @@ function updateCharsetInfo() {
 }
 
 function getCurrentLineLength() {
-  for (const r of document.querySelectorAll('input[name="lineLength"]')) {
-    if (r.checked) return parseInt(r.value);
-  }
-  return parseInt(document.getElementById('customLineLen').value) || 5;
+  const custom = document.getElementById('customLineLen');
+  const customVal = parseInt(custom.value);
+  if (customVal > 0 && customVal <= 20) return customVal;
+  return 5;
 }
 
 function getCurrentMode() { return currentMode; }
@@ -634,9 +635,24 @@ for (const r of document.querySelectorAll('input[name="mode"]')) {
   r.addEventListener('change', () => { if (r.checked) setMode(r.value); });
 }
 for (const r of document.querySelectorAll('input[name="lineLength"]')) {
-  r.addEventListener('change', updateCharsetInfo);
+  r.addEventListener('change', () => {
+    if (r.checked) {
+      document.getElementById('customLineLen').value = r.value;
+      updateCharsetInfo();
+    }
+  });
 }
-document.getElementById('customLineLen').addEventListener('input', updateCharsetInfo);
+document.getElementById('customLineLen').addEventListener('input', () => {
+  for (const r of document.querySelectorAll('input[name="lineLength"]')) {
+    r.checked = false;
+  }
+  updateCharsetInfo();
+});
+document.getElementById('customLineLen').addEventListener('focus', () => {
+  for (const r of document.querySelectorAll('input[name="lineLength"]')) {
+    r.checked = false;
+  }
+});
 
 presetSelect.addEventListener('change', updateCharsetInfo);
 customCharset.addEventListener('input', updateCharsetInfo);
