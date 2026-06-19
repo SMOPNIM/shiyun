@@ -279,7 +279,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>最大长度</label>
-        <input type="number" id="maxLength" value="2" min="1" max="6" step="1">
+        <input type="number" id="maxLength" value="2" min="0" max="6" step="1">
       </div>
       <div class="form-group">
         <label>预设字符集</label>
@@ -449,7 +449,7 @@ function getCurrentPreset() {
 function updateCharsetInfo() {
   const chars = getCurrentChars();
   const preset = getCurrentPreset();
-  const maxLen = parseInt(maxLengthInput.value) || 1;
+  const maxLen = Math.max(1, parseInt(maxLengthInput.value) || 0);
   const n = preset ? '?' : chars.length;
 
   const payload = preset ? { preset, max_length: maxLen } : { chars, max_length: maxLen };
@@ -642,14 +642,14 @@ async function startGeneration() {
 
   currentChars = getCurrentChars();
   const currentPreset = getCurrentPreset();
-  currentMaxLen = parseInt(maxLengthInput.value) || 1;
+  currentMaxLen = parseInt(maxLengthInput.value);
+  if (!currentMaxLen || currentMaxLen < 1) {
+    showToast('长度必须大于0', 3000);
+    return;
+  }
 
   if (!currentChars && !currentPreset) {
     showToast('请选择或输入字符集', 3000);
-    return;
-  }
-  if (currentMaxLen < 1) {
-    showToast('长度必须大于0', 3000);
     return;
   }
 
