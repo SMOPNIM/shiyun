@@ -312,6 +312,29 @@
     .form-group { min-width: 100%; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
   }
+
+  /* Star Chart */
+  .star-chart-container {
+    position: relative; width: 100%; height: 400px; display: none;
+    background: radial-gradient(ellipse at center, #0a0a2e 0%, #050510 100%);
+    border-radius: 8px; overflow: hidden;
+  }
+  .star-chart-container.active { display: block; }
+  #starChartCanvas { width: 100%; height: 100%; display: block; }
+  #starTooltip {
+    position: absolute; display: none; z-index: 10;
+    background: rgba(10,10,30,0.92); border: 1px solid var(--gold-dark);
+    border-radius: 10px; padding: 14px 18px; max-width: 280px;
+    font-family: "Noto Serif SC", serif; font-size: 1em; line-height: 1.8;
+    color: var(--text-primary); pointer-events: none;
+    box-shadow: 0 0 30px rgba(212,168,67,0.15);
+  }
+  #starTooltip .tooltip-index {
+    font-size: 0.75em; color: var(--gold); margin-bottom: 4px; letter-spacing: 0.1em;
+  }
+  #starTooltip .tooltip-line {
+    text-align: center; text-shadow: 0 0 8px rgba(212,168,67,0.3);
+  }
 </style>
 </head>
 <body>
@@ -452,9 +475,16 @@
   <div class="card results-container">
     <div class="card-title" style="display:flex;justify-content:space-between">
       <span>☁ 吟诗流</span>
-      <span class="text-muted" style="font-size:0.8em;font-weight:400" id="resultCounter">显示 0 条</span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="text-muted" style="font-size:0.8em;font-weight:400" id="resultCounter">显示 0 条</span>
+        <button class="btn btn-jade" id="starChartBtn" style="display:none;padding:2px 10px;font-size:0.75em;cursor:pointer">⭐ 星图</button>
+      </span>
     </div>
     <div class="results-area" id="resultsArea"></div>
+    <div class="star-chart-container" id="starChartContainer">
+      <canvas id="starChartCanvas"></canvas>
+      <div id="starTooltip"></div>
+    </div>
     <div id="pauseOverlay" style="display:none;text-align:center;padding:20px;color:var(--gold);font-size:1.2em">⏸ 已暂停</div>
   </div>
 </div>
@@ -475,6 +505,10 @@ let displayTimer = null;
 const MAX_DISPLAY = 5000;
 let resultCount = 0;
 let pausedState = null;
+let allPoems = [];
+let starChartActive = false;
+let starChartAnimId = null;
+const MAX_STARS = 300;
 
 function formatNumStr(s) {
   if (s.length > 12) return '过大';
@@ -748,6 +782,7 @@ function flushDisplay() {
         try {
           const parsed = JSON.parse(item);
           if (parsed.type === 'poem') {
+            if (!parsed.partial) allPoems.push(parsed.lines);
             const card = document.createElement('div');
             card.className = 'poem-card' + (parsed.partial ? ' poem-partial' : '');
             const poemNum = resultCount - batchSize + i + 1;
@@ -830,6 +865,10 @@ function updateUI() {
 
   if (!isRunning && !isPaused) {
     progressLabel.textContent = resultCount > 0 ? '已停止' : '等待开始...';
+  }
+  const starBtn = document.getElementById('starChartBtn');
+  if (starBtn) {
+    starBtn.style.display = (!isRunning && currentMode === 'poetry' && allPoems.length > 0) ? '' : 'none';
   }
 }
 
@@ -964,6 +1003,8 @@ async function startGeneration() {
   document.getElementById('resultCounter').textContent = currentMode === 'poetry' ? '显示 0 首' : '显示 0 条';
   resultCount = 0;
   displayBuffer = [];
+  allPoems = [];
+  starChartActive = false;
   progressFill.style.width = '0%';
   progressPercent.textContent = '0%';
   progressLabel.textContent = '启动中...';
@@ -1180,6 +1221,160 @@ async function dismissLatestSession() {
     await fetch('/api/clear_latest', { method: 'POST' });
   } catch(e) {}
 }
+
+// ============================================================
+// Star Chart
+// ============================================================
+
+function toggleStarChart() {
+  starChartActive = !starChartActive;
+  const resultsArea = document.getElementById('resultsArea');
+  const container = document.getElementById('starChartContainer');
+  const starBtn = document.getElementById('starChartBtn');
+  const pauseOverlay = document.getElementById('pauseOverlay');
+  if (pauseOverlay) pauseOverlay.style.display = 'none';
+
+  if (starChartActive) {
+    resultsArea.style.display = 'none';
+    container.classList.add('active');
+    starBtn.textContent = '☁ 返回';
+    initStarChart();
+  } else {
+    resultsArea.style.display = '';
+    container.classList.remove('active');
+    starBtn.textContent = '⭐ 星图';
+    if (starChartAnimId) {
+      cancelAnimationFrame(starChartAnimId);
+      starChartAnimId = null;
+    }
+  }
+}
+
+function initStarChart() {
+  const canvas = document.getElementById('starChartCanvas');
+  const container = document.getElementById('starChartContainer');
+
+  const rect = container.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const cx = W / 2, cy = H / 2;
+
+  const poemArr = allPoems.length > MAX_STARS ? allPoems.slice(-MAX_STARS) : allPoems;
+
+  const stars = poemArr.map((lines) => {
+    const angleOff = Math.random() * Math.PI * 2;
+    const speed = 0.3 + Math.random() * 0.7;
+    const maxR = Math.min(W, H) / 2 - 60;
+    const rx = 40 + Math.random() * Math.max(0, maxR);
+    const ry = 20 + Math.random() * Math.max(0, rx * 0.4);
+    const hue = 35 + Math.random() * 20;
+    const size = 1.5 + Math.random() * 2.5;
+    const opacity = 0.5 + Math.random() * 0.5;
+    return { lines, angleOff, speed, rx, ry, hue, size, opacity };
+  });
+
+  if (starChartAnimId) cancelAnimationFrame(starChartAnimId);
+
+  starChartAnimId = requestAnimationFrame(function animate(time) {
+    const t = time / 1000;
+    ctx.clearRect(0, 0, W, H);
+
+    // Background twinkle stars
+    for (let i = 0; i < 120; i++) {
+      const sx = ((i * 137.5 + 50) % W);
+      const sy = ((i * 97.3 + 20) % H);
+      const sb = 0.15 + Math.sin(t * 0.7 + i * 1.3) * 0.12;
+      ctx.fillStyle = `rgba(255,255,240,${Math.max(0, sb)})`;
+      ctx.fillRect(sx, sy, 1.2, 1.2);
+    }
+
+    // Sun glow
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 90);
+    grad.addColorStop(0, 'rgba(255,220,100,0.7)');
+    grad.addColorStop(0.2, 'rgba(255,190,70,0.25)');
+    grad.addColorStop(1, 'rgba(255,190,70,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 90, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sun
+    ctx.shadowColor = '#f0c040';
+    ctx.shadowBlur = 35;
+    ctx.fillStyle = '#f5d060';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Orbiting stars
+    const positions = [];
+    for (const s of stars) {
+      const angle = s.angleOff + s.speed * t;
+      const x = cx + s.rx * Math.cos(angle);
+      const y = cy + s.ry * Math.sin(angle);
+      positions.push({ x, y, lines: s.lines });
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle + Math.PI / 2);
+      ctx.fillStyle = `hsla(${s.hue}, 80%, 60%, ${s.opacity})`;
+      ctx.shadowColor = `hsla(${s.hue}, 80%, 60%, 0.3)`;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s.size, s.size * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    canvas._starPositions = positions;
+    starChartAnimId = requestAnimationFrame(animate);
+  });
+}
+
+// Star chart events
+document.getElementById('starChartBtn').addEventListener('click', toggleStarChart);
+
+const starCanvas = document.getElementById('starChartCanvas');
+starCanvas.addEventListener('mousemove', (e) => {
+  const rect = starCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const tooltip = document.getElementById('starTooltip');
+  const positions = starCanvas._starPositions || [];
+
+  let found = null;
+  for (const p of positions) {
+    const dx = mx - p.x, dy = my - p.y;
+    if (dx * dx + dy * dy < 144) { found = p; break; }
+  }
+
+  if (found) {
+    const idx = allPoems.indexOf(found.lines);
+    const lines = found.lines || [];
+    tooltip.innerHTML = `<div class="tooltip-index">第 ${idx + 1} 首</div>` + lines.map(l => `<div class="tooltip-line">${l}</div>`).join('');
+    tooltip.style.display = 'block';
+    let tx = e.clientX - rect.left + 16;
+    let ty = e.clientY - rect.top - 10;
+    if (tx + 280 > rect.width) tx = e.clientX - rect.left - 290;
+    if (ty < 4) ty = 4;
+    if (ty + 100 > rect.height) ty = rect.height - 110;
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = ty + 'px';
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+starCanvas.addEventListener('mouseleave', () => {
+  document.getElementById('starTooltip').style.display = 'none';
+});
 
 // ============================================================
 // Event listeners

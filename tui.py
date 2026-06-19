@@ -68,6 +68,13 @@ class TUISession:
         self.gen_thread: Optional[threading.Thread] = None
         self.generated = 0
         self.start_time: Optional[datetime] = None
+        self._accumulated: float = 0.0
+
+    @property
+    def elapsed(self) -> float:
+        if self.start_time:
+            return self._accumulated + (datetime.now() - self.start_time).total_seconds()
+        return self._accumulated
 
 
 def generator_worker(session: TUISession, resume: Optional[dict] = None):
@@ -136,8 +143,7 @@ def run_tui(stdscr):
         # === Stats ===
         total = estimate_length(session)
         total_str = fmt_num(total) if total <= 10 ** 18 else "过大"
-        now = datetime.now()
-        elapsed = (now - session.start_time).total_seconds() if session.start_time else 0
+        elapsed = session.elapsed
         gen = session.generated
         rate = gen / elapsed if elapsed > 0.5 else 0
 
@@ -259,6 +265,7 @@ def run_tui(stdscr):
         elif key in (ord('\n'), ord('\r')) and not session.running and not session.paused:
             session.session_id = "tui_" + str(int(time.time()))
             session.generated = 0
+            session._accumulated = 0.0
             session.start_time = datetime.now()
             session.running = True
             session.paused = False
@@ -275,6 +282,8 @@ def run_tui(stdscr):
             session.gen_thread.start()
 
         elif key == ord('p') and session.running:
+            session._accumulated += (datetime.now() - session.start_time).total_seconds()
+            session.start_time = None
             pause_session(session.session_id)
             session.running = False
             session.paused = True
@@ -284,6 +293,7 @@ def run_tui(stdscr):
             if paused:
                 clear_paused_state(session.session_id)
             clear_stop(session.session_id)
+            session.start_time = datetime.now()
             session.running = True
             session.paused = False
             session.session_id = "tui_" + str(int(time.time()))
