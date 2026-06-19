@@ -492,7 +492,6 @@ function formatNum(n) {
 
 function formatCompactNum(n) {
   if (n <= 0) return '0';
-  if (n >= 1000000000000000000) return '超过上限';
   if (n >= 1e16) return (n / 1e16).toFixed(2) + '亿亿';
   if (n >= 1e12) return (n / 1e12).toFixed(2) + '万亿';
   if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
@@ -594,7 +593,11 @@ function updateCharsetInfo() {
       const totalStr = data.total;
       const totalRaw = data.total_raw || 0;
       const isHuge = totalStr.length > 9 || (totalStr.length > 7 && maxLen > 3);
-      const hugeExtra = isHuge && totalRaw > 0 ? ` (超过 ${formatCompactNum(totalRaw)})` : '';
+      const overflowSentinel = 1000000000000000001;
+      let hugeExtra = '';
+      if (isHuge && totalRaw > 0) {
+        hugeExtra = totalRaw >= overflowSentinel ? ' (超过 10¹⁸)' : ` (超过 ${formatCompactNum(totalRaw)})`;
+      }
       let extra = '';
       if (mode === 'poetry' && totalRaw > 0 && !isHuge) {
         extra = ` | 约 ${formatNum(totalRaw)} 首诗`;
