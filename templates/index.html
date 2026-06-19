@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>诗云 - 究极吟诗程序</title>
+<style>
+  :root {
+    --bg-primary: #0a0a1a;
+    --bg-secondary: #111128;
+    --bg-card: #1a1a3e;
+    --gold: #d4a843;
+    --gold-light: #f0c040;
+    --gold-dark: #b08a30;
+    --jade: #2d8a6e;
+    --jade-light: #3dba8e;
+    --cinnabar: #c23b22;
+    --text-primary: #e8dcc8;
+    --text-secondary: #a89880;
+    --text-muted: #6a6050;
+    --border: #2a2a4e;
+    --shadow: rgba(0,0,0,0.4);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Noto Serif SC", "Source Han Serif SC", "SimSun", "Songti SC", Georgia, serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+  ::-webkit-scrollbar-thumb { background: var(--gold-dark); border-radius: 3px; }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+  /* Header */
+  header { text-align: center; padding: 40px 0 30px; position: relative; }
+  header::after {
+    content: '';
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  header h1 {
+    font-size: 4em; font-weight: 900;
+    background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-dark));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: 0.3em; text-shadow: none;
+    position: relative;
+  }
+  header h1::before {
+    content: '☁'; position: absolute; left: -0.6em; top: -0.15em;
+    font-size: 0.5em; opacity: 0.3; -webkit-text-fill-color: var(--gold);
+  }
+  header h1::after {
+    content: '☁'; position: absolute; right: -0.6em; top: -0.15em;
+    font-size: 0.5em; opacity: 0.3; -webkit-text-fill-color: var(--gold);
+  }
+  .subtitle {
+    font-size: 1.1em; color: var(--text-secondary); margin-top: 10px;
+    letter-spacing: 0.5em;
+  }
+  .subtitle em { font-style: normal; color: var(--gold); }
+
+  /* Card */
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin-bottom: 20px;
+    transition: border-color 0.3s;
+  }
+  .card:hover { border-color: var(--gold-dark); }
+  .card-title {
+    font-size: 1em; color: var(--gold); margin-bottom: 16px;
+    letter-spacing: 0.2em; font-weight: 700;
+  }
+
+  /* Form */
+  .form-row { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .form-group { flex: 1; min-width: 200px; }
+  .form-group label {
+    display: block; font-size: 0.85em; color: var(--text-secondary);
+    margin-bottom: 6px; letter-spacing: 0.1em;
+  }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 10px 14px;
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text-primary); font-size: 1em;
+    font-family: inherit; transition: border-color 0.3s;
+    outline: none;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    border-color: var(--gold);
+  }
+  .form-group textarea { resize: vertical; min-height: 60px; }
+  .form-group select { cursor: pointer; }
+  .form-group select option { background: var(--bg-secondary); }
+
+  .charset-info {
+    font-size: 0.8em; color: var(--text-muted); margin-top: 4px;
+  }
+
+  /* Buttons */
+  .btn-group { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+  .btn {
+    padding: 10px 28px; border: none; border-radius: 8px;
+    font-size: 1em; font-family: inherit; font-weight: 700;
+    cursor: pointer; transition: all 0.3s; letter-spacing: 0.1em;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--gold-dark), var(--gold), var(--gold-light));
+    color: var(--bg-primary);
+  }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(212,168,67,0.3); }
+  .btn-danger {
+    background: var(--cinnabar); color: white;
+  }
+  .btn-danger:hover:not(:disabled) { background: #d4452a; transform: translateY(-1px); }
+  .btn-jade {
+    background: var(--jade); color: white;
+  }
+  .btn-jade:hover:not(:disabled) { background: var(--jade-light); transform: translateY(-1px); }
+
+  /* Stats */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .stat-item {
+    text-align: center; padding: 12px;
+    background: var(--bg-secondary); border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .stat-item .value {
+    font-size: 1.4em; font-weight: 700; color: var(--gold-light);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-item .label {
+    font-size: 0.8em; color: var(--text-secondary); margin-top: 4px;
+  }
+  .stat-item .unit { font-size: 0.7em; color: var(--text-muted); }
+
+  /* Progress */
+  .progress-section { margin-bottom: 20px; }
+  .progress-bar {
+    height: 8px; background: var(--bg-secondary); border-radius: 4px;
+    overflow: hidden; border: 1px solid var(--border);
+  }
+  .progress-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--jade), var(--gold));
+    border-radius: 4px; transition: width 0.3s ease;
+  }
+  .progress-text {
+    display: flex; justify-content: space-between; margin-top: 6px;
+    font-size: 0.8em; color: var(--text-muted);
+  }
+
+  /* Save progress */
+  .save-progress {
+    display: none; margin-top: 12px; padding: 12px;
+    background: rgba(45,138,110,0.1); border: 1px solid var(--jade);
+    border-radius: 8px;
+  }
+  .save-progress.active { display: block; }
+  .save-progress .save-bar {
+    height: 6px; background: var(--bg-secondary); border-radius: 3px;
+    overflow: hidden; margin-top: 8px;
+  }
+  .save-progress .save-fill {
+    height: 100%; width: 0%;
+    background: var(--jade-light); border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+  .save-progress .save-text {
+    font-size: 0.85em; color: var(--text-secondary);
+  }
+
+  /* Results */
+  .results-container {
+    position: relative;
+  }
+  .results-area {
+    height: 400px; overflow-y: auto; padding: 16px;
+    background: var(--bg-secondary); border-radius: 8px;
+    border: 1px solid var(--border);
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 1.1em; line-height: 2;
+  }
+  .results-area:empty::after {
+    content: '等待吟诗... 点击「开始吟诗」按钮开启枚举之旅';
+    display: block; text-align: center; color: var(--text-muted);
+    font-style: italic; padding: 80px 20px;
+  }
+  .result-item {
+    display: inline-block; margin: 2px 4px; padding: 1px 8px;
+    background: rgba(212,168,67,0.08); border-radius: 4px;
+    animation: fadeIn 0.3s ease;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+  .result-item:hover { background: rgba(212,168,67,0.2); }
+  .result-count {
+    font-size: 0.8em; color: var(--text-muted); text-align: right;
+    margin-top: 8px;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Warning */
+  .warning {
+    display: none; padding: 12px 16px;
+    background: rgba(194,59,34,0.1); border: 1px solid var(--cinnabar);
+    border-radius: 8px; color: #e87060; font-size: 0.9em;
+    margin-bottom: 16px;
+  }
+  .warning.active { display: block; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px);
+    padding: 14px 28px; background: var(--bg-card);
+    border: 1px solid var(--gold); border-radius: 8px;
+    color: var(--text-primary); font-size: 0.9em;
+    opacity: 0; transition: all 0.4s ease;
+    z-index: 1000; pointer-events: none;
+    box-shadow: 0 4px 20px var(--shadow);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Format helpers */
+  .text-muted { color: var(--text-muted); }
+  .text-gold { color: var(--gold); }
+
+  /* Checkbox */
+  .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .checkbox-group input[type="checkbox"] {
+    width: 18px; height: 18px; accent-color: var(--gold);
+    cursor: pointer;
+  }
+
+  @media (max-width: 640px) {
+    header h1 { font-size: 2.5em; }
+    .container { padding: 12px; }
+    .form-row { flex-direction: column; }
+    .form-group { min-width: 100%; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>诗云</h1>
+    <p class="subtitle">—— <em>究极吟诗程序</em> ——</p>
+  </header>
+
+  <!-- Warning -->
+  <div class="warning" id="warning"></div>
+
+  <!-- Save progress -->
+  <div class="save-progress" id="saveProgress">
+    <div class="save-text" id="saveText">保存中...</div>
+    <div class="save-bar">
+      <div class="save-fill" id="saveFill"></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card">
+    <div class="card-title">⚙ 配置</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>最大长度</label>
+        <input type="number" id="maxLength" value="2" min="1" max="6" step="1">
+      </div>
+      <div class="form-group">
+        <label>预设字符集</label>
+        <select id="presetSelect">
+          {% for key, info in presets.items() %}
+          <option value="{{ key }}">{{ info.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>自定义字符集 <span class="text-muted">(留空则使用预设)</span></label>
+        <textarea id="customCharset" rows="2" placeholder="在此输入自定义字符..."></textarea>
+        <div class="charset-info" id="charsetInfo">字符数: 0 | 估算组合: 0</div>
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:0">
+      <div class="btn-group">
+        <button class="btn btn-primary" id="startBtn">☁ 开始吟诗</button>
+        <button class="btn btn-danger" id="stopBtn" disabled>✕ 停止</button>
+        <button class="btn btn-jade" id="saveBtn" disabled>💾 保存</button>
+      </div>
+      <div class="checkbox-group" style="margin-left:auto">
+        <input type="checkbox" id="compressCheck" checked>
+        <label for="compressCheck" style="color:var(--text-secondary);font-size:0.85em">Gzip压缩保存</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="card">
+    <div class="card-title">📊 实时状态</div>
+    <div class="stats-grid">
+      <div class="stat-item">
+        <div class="value" id="genCount">0</div>
+        <div class="label">已生成</div>
+      </div>
+      <div class="stat-item">
+        <div class="value" id="totalEstimate">0</div>
+        <div class="label">估算总数</div>
+      </div>
+      <div class="stat-item">
+        <div class="value" id="genRate">0</div>
+        <div class="label" style="display:inline">速率</div>
+        <span class="unit">/s</span>
+      </div>
+      <div class="stat-item">
+        <div class="value" id="genElapsed">0</div>
+        <div class="label">用时</div>
+        <span class="unit">s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-section">
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="progress-text">
+      <span id="progressLabel">等待开始...</span>
+      <span id="progressPercent">0%</span>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="card results-container">
+    <div class="card-title" style="display:flex;justify-content:space-between">
+      <span>☁ 吟诗流</span>
+      <span class="text-muted" style="font-size:0.8em;font-weight:400" id="resultCounter">显示 0 条</span>
+    </div>
+    <div class="results-area" id="resultsArea"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const PRESETS_URL = '/api/presets';
+let presetsData = {};
+let eventSource = null;
+let sessionId = 'default_' + Date.now();
+let isRunning = false;
+let statsTimer = null;
+let displayBuffer = [];
+let displayTimer = null;
+const MAX_DISPLAY = 5000;
+let resultCount = 0;
+
+// Format numbers
+function formatNum(n) {
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + '万亿';
+  if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
+  if (n >= 1e4) return (n / 1e4).toFixed(2) + '万';
+  return n.toLocaleString('zh-CN');
+}
+
+function formatTime(s) {
+  if (s < 60) return s.toFixed(1);
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(0);
+  return `${m}分${sec}秒`;
+}
+
+// Toast
+function showToast(msg, duration = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// DOM refs
+const maxLengthInput = document.getElementById('maxLength');
+const presetSelect = document.getElementById('presetSelect');
+const customCharset = document.getElementById('customCharset');
+const charsetInfo = document.getElementById('charsetInfo');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const saveBtn = document.getElementById('saveBtn');
+const compressCheck = document.getElementById('compressCheck');
+const genCount = document.getElementById('genCount');
+const totalEstimate = document.getElementById('totalEstimate');
+const genRate = document.getElementById('genRate');
+const genElapsed = document.getElementById('genElapsed');
+const progressFill = document.getElementById('progressFill');
+const progressLabel = document.getElementById('progressLabel');
+const progressPercent = document.getElementById('progressPercent');
+const resultsArea = document.getElementById('resultsArea');
+const resultCounter = document.getElementById('resultCounter');
+const warning = document.getElementById('warning');
+const saveProgress = document.getElementById('saveProgress');
+const saveText = document.getElementById('saveText');
+const saveFill = document.getElementById('saveFill');
+
+// Load presets
+async function loadPresets() {
+  try {
+    const resp = await fetch(PRESETS_URL);
+    presetsData = await resp.json();
+    updateCharsetInfo();
+  } catch(e) {
+    console.error('加载预设失败:', e);
+  }
+}
+
+function getCurrentChars() {
+  const custom = customCharset.value.trim();
+  if (custom) return custom;
+  const key = presetSelect.value;
+  return presetsData[key] ? presetsData[key].chars : '';
+}
+
+function updateCharsetInfo() {
+  const chars = getCurrentChars();
+  const maxLen = parseInt(maxLengthInput.value) || 1;
+  // client-side rough estimate (may overflow)
+  let total = 0;
+  let term = 1;
+  const n = chars.length;
+  for (let i = 0; i < maxLen; i++) {
+    term *= n;
+    total += term;
+    if (total > Number.MAX_SAFE_INTEGER) {
+      total = Infinity;
+      break;
+    }
+  }
+  document.getElementById('charsetInfo').textContent =
+    `字符数: ${chars.length} | 估算组合: ${total === Infinity ? '∞ (过大)' : formatNum(total)}`;
+  
+  if (total > 1e8 || (total > 1e6 && maxLen > 3)) {
+    warning.textContent = `⚠ 警告: 组合总数约 ${formatNum(total)}，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。`;
+    warning.classList.add('active');
+  } else {
+    warning.classList.remove('active');
+  }
+}
+
+presetSelect.addEventListener('change', updateCharsetInfo);
+customCharset.addEventListener('input', updateCharsetInfo);
+maxLengthInput.addEventListener('input', updateCharsetInfo);
+
+// SSE stream
+let currentChars = '';
+let currentMaxLen = 1;
+
+function startStream() {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+
+  const url = `/stream?session_id=${encodeURIComponent(sessionId)}&chars=${encodeURIComponent(currentChars)}&max_length=${currentMaxLen}`;
+  eventSource = new EventSource(url);
+
+  eventSource.onmessage = (e) => {
+    if (!isRunning) isRunning = true;
+    const item = e.data;
+    displayBuffer.push(item);
+    resultCount++;
+    flushDisplay();
+  };
+
+  eventSource.onerror = () => {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+    if (isRunning) {
+      isRunning = false;
+      updateUI();
+      fetchStats();
+    }
+  };
+}
+
+function flushDisplay() {
+  if (displayTimer) return;
+  displayTimer = requestAnimationFrame(() => {
+    displayTimer = null;
+    const batch = displayBuffer.slice(0, 200);
+    displayBuffer = displayBuffer.slice(200);
+
+    const fragment = document.createDocumentFragment();
+    for (const item of batch) {
+      const el = document.createElement('span');
+      el.className = 'result-item';
+      el.textContent = item;
+      fragment.appendChild(el);
+    }
+    resultsArea.appendChild(fragment);
+
+    // Trim excessive items
+    const children = resultsArea.children;
+    if (children.length > MAX_DISPLAY) {
+      while (children.length > MAX_DISPLAY) {
+        children[0].remove();
+      }
+    }
+
+    resultCounter.textContent = `显示 ${children.length} 条`;
+
+    // Auto scroll
+    resultsArea.scrollTop = resultsArea.scrollHeight;
+  });
+}
+
+// Stats
+function updateStats() {
+  // Stats are fetched periodically from server
+}
+
+function fetchStats() {
+  fetch(`/api/stats?session_id=${encodeURIComponent(sessionId)}`)
+    .then(r => r.json())
+    .then(data => {
+      genCount.textContent = formatNum(data.generated || 0);
+      totalEstimate.textContent = formatNum(data.total || 0);
+      genRate.textContent = formatNum(Math.round(data.rate || 0));
+      genElapsed.textContent = formatTime(data.elapsed || 0);
+
+      if (data.total > 0) {
+        const pct = Math.min((data.generated / data.total) * 100, 100);
+        progressFill.style.width = pct + '%';
+        progressPercent.textContent = pct.toFixed(2) + '%';
+        progressLabel.textContent = isRunning ? '生成中...' : (data.total === data.generated ? '完成！' : '已停止');
+      }
+    })
+    .catch(() => {});
+}
+
+function updateUI() {
+  startBtn.disabled = isRunning;
+  stopBtn.disabled = !isRunning;
+  saveBtn.disabled = !isRunning && resultCount === 0;
+  if (!isRunning) {
+    progressLabel.textContent = resultCount > 0 ? '已停止' : '等待开始...';
+  }
+}
+
+// Save
+async function saveGeneration() {
+  const compress = compressCheck.checked;
+  saveProgress.classList.add('active');
+  saveFill.style.width = '0%';
+  saveText.textContent = '正在枚举并保存...';
+
+  try {
+    const resp = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, chars: currentChars, max_length: currentMaxLen, compress })
+    });
+    const data = await resp.json();
+    if (data.status === 'saving') {
+      // Poll save progress
+      const pollTimer = setInterval(async () => {
+        const sr = await fetch(`/api/save_status?session_id=${encodeURIComponent(sessionId)}`);
+        const sd = await sr.json();
+        if (sd.saving) {
+          saveFill.style.width = sd.progress + '%';
+          saveText.textContent = `保存中... ${sd.progress.toFixed(1)}%`;
+        } else {
+          clearInterval(pollTimer);
+          saveFill.style.width = '100%';
+          saveText.textContent = `✓ 保存完成！文件: ${sd.file} (${formatNum(sd.count)} 条)`;
+          showToast(`保存完成！共 ${formatNum(sd.count)} 条 → ${sd.file}`);
+          setTimeout(() => saveProgress.classList.remove('active'), 4000);
+        }
+      }, 500);
+    }
+  } catch(e) {
+    saveText.textContent = '✕ 保存失败: ' + e.message;
+    showToast('保存失败', 3000);
+  }
+}
+
+// Start
+async function startGeneration() {
+  if (isRunning) return;
+
+  currentChars = getCurrentChars();
+  currentMaxLen = parseInt(maxLengthInput.value) || 1;
+
+  if (!currentChars) {
+    showToast('请选择或输入字符集', 3000);
+    return;
+  }
+  if (currentMaxLen < 1) {
+    showToast('长度必须大于0', 3000);
+    return;
+  }
+
+  // Reset display
+  resultsArea.innerHTML = '';
+  resultCounter.textContent = '显示 0 条';
+  resultCount = 0;
+  displayBuffer = [];
+  progressFill.style.width = '0%';
+  progressPercent.textContent = '0%';
+  progressLabel.textContent = '启动中...';
+  saveProgress.classList.remove('active');
+
+  sessionId = 'default_' + Date.now();
+
+  try {
+    const resp = await fetch('/api/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, chars: currentChars, max_length: currentMaxLen })
+    });
+    const data = await resp.json();
+    if (data.error) {
+      showToast('错误: ' + data.error, 3000);
+      return;
+    }
+
+    isRunning = true;
+    updateUI();
+
+    // Start SSE
+    startStream();
+
+    // Start polling stats
+    if (statsTimer) clearInterval(statsTimer);
+    statsTimer = setInterval(fetchStats, 200);
+
+    showToast(`开始枚举！组合总数: ${formatNum(data.total)}`, 2000);
+  } catch(e) {
+    showToast('启动失败: ' + e.message, 3000);
+  }
+}
+
+// Stop
+async function stopGeneration() {
+  try {
+    await fetch('/api/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId })
+    });
+  } catch(e) {}
+
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+  isRunning = false;
+  if (statsTimer) {
+    clearInterval(statsTimer);
+    statsTimer = null;
+  }
+  updateUI();
+  fetchStats();
+  progressLabel.textContent = '已停止';
+  showToast('已停止生成', 2000);
+}
+
+// Event listeners
+startBtn.addEventListener('click', startGeneration);
+stopBtn.addEventListener('click', stopGeneration);
+saveBtn.addEventListener('click', saveGeneration);
+
+// Init
+loadPresets();
+updateUI();
+
+// Periodic stats even when not running
+setInterval(() => {
+  if (!isRunning) fetchStats();
+}, 2000);
+</script>
+</body>
+</html>
