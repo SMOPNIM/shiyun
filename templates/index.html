@@ -119,6 +119,10 @@
     background: var(--cinnabar); color: white;
   }
   .btn-danger:hover:not(:disabled) { background: #d4452a; transform: translateY(-1px); }
+  .btn-warning {
+    background: var(--cinnabar); color: white;
+  }
+  .btn-warning:hover:not(:disabled) { background: #d4452a; transform: translateY(-1px); }
   .btn-jade {
     background: var(--jade); color: white;
   }
@@ -300,6 +304,7 @@
     <div class="form-row" style="margin-bottom:0">
       <div class="btn-group">
         <button class="btn btn-primary" id="startBtn">☁ 开始吟诗</button>
+        <button class="btn btn-warning" id="pauseBtn" style="display:none">⏸ 暂停</button>
         <button class="btn btn-primary" id="resumeBtn" style="display:none">▶ 继续</button>
         <button class="btn btn-danger" id="stopBtn" disabled>✕ 停止</button>
         <button class="btn btn-jade" id="saveBtn" disabled>💾 保存结果</button>
@@ -416,6 +421,7 @@ const presetSelect = document.getElementById('presetSelect');
 const customCharset = document.getElementById('customCharset');
 const charsetInfo = document.getElementById('charsetInfo');
 const startBtn = document.getElementById('startBtn');
+const pauseBtn = document.getElementById('pauseBtn');
 const resumeBtn = document.getElementById('resumeBtn');
 const stopBtn = document.getElementById('stopBtn');
 const saveBtn = document.getElementById('saveBtn');
@@ -593,6 +599,7 @@ function fetchStats() {
 function updateUI() {
   startBtn.disabled = isRunning || isPaused;
   startBtn.style.display = isPaused ? 'none' : '';
+  pauseBtn.style.display = isRunning && !isPaused ? '' : 'none';
   resumeBtn.style.display = isPaused ? '' : 'none';
   stopBtn.disabled = !isRunning && !isPaused;
   saveBtn.disabled = !isRunning && !isPaused && resultCount === 0;
@@ -861,6 +868,7 @@ async function loadStateFromDisk(filename) {
 // Event listeners
 // ============================================================
 startBtn.addEventListener('click', startGeneration);
+pauseBtn.addEventListener('click', pauseGeneration);
 resumeBtn.addEventListener('click', resumeGeneration);
 stopBtn.addEventListener('click', stopGeneration);
 saveBtn.addEventListener('click', saveGeneration);
