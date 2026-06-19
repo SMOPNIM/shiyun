@@ -714,14 +714,17 @@ function flushDisplay() {
 
     const fragment = document.createDocumentFragment();
     const isPoetry = currentMode === 'poetry';
-    for (const item of batch) {
+    const batchSize = batch.length;
+    for (let i = 0; i < batchSize; i++) {
+      const item = batch[i];
       if (isPoetry) {
         try {
           const parsed = JSON.parse(item);
           if (parsed.type === 'poem') {
             const card = document.createElement('div');
             card.className = 'poem-card' + (parsed.partial ? ' poem-partial' : '');
-            let html = `<div class="poem-index">第 ${parsed.index != null ? parsed.index + 1 : '?'} 首</div>`;
+            const poemNum = resultCount - batchSize + i + 1;
+            let html = `<div class="poem-index">第 ${poemNum} 首</div>`;
             html += '<div class="poem-body">';
             for (let i = 0; i < parsed.lines.length; i++) {
               html += `<div class="poem-line">${parsed.lines[i]}</div>`;
