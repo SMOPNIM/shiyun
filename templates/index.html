@@ -598,12 +598,8 @@ function updateCharsetInfo() {
       if (isHuge && totalRaw > 0) {
         hugeExtra = totalRaw >= overflowSentinel ? ' (超过 10^18)' : ` (超过 ${formatCompactNum(totalRaw)})`;
       }
-      let extra = '';
-      if (mode === 'poetry' && totalRaw > 0 && !isHuge) {
-        extra = ` | 约 ${formatNum(totalRaw)} 首诗`;
-      }
       document.getElementById('charsetInfo').textContent =
-        `字符数: ${data.chars_len} | 估算${mode === 'poetry' ? '诗' : '组合'}: ${isHuge ? '过大' : formatNumStr(totalStr)}${hugeExtra}${extra}`;
+        `字符数: ${data.chars_len} | 估算${mode === 'poetry' ? '诗' : '组合'}: ${isHuge ? '过大' : formatNumStr(totalStr)}${hugeExtra}`;
 
       if (isHuge) {
         warning.textContent = `⚠ 警告: 组合总数过大${hugeExtra}，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。`;
