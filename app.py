@@ -77,7 +77,8 @@ def estimate():
     max_len = int(data.get("max_length", 1))
     mode = data.get("mode", "enum")
     if mode == "poetry":
-        total = estimate_total(len(chars), max_len) - estimate_total(len(chars), max_len - 1)
+        raw = len(chars) ** max_len
+        total = raw if raw <= 10 ** 18 else 10 ** 18 + 1
     else:
         total = estimate_total(len(chars), max_len)
     total_str = str(total)
@@ -98,7 +99,8 @@ def start():
         return jsonify({"error": "长度必须大于0"}), 400
 
     if mode == "poetry":
-        total = estimate_total(len(chars), max_len) - estimate_total(len(chars), max_len - 1)
+        raw = len(chars) ** max_len
+        total = raw if raw <= 10 ** 18 else 10 ** 18 + 1
     else:
         total = estimate_total(len(chars), max_len)
     return jsonify({

@@ -572,8 +572,8 @@ function updateCharsetInfo() {
   const lineLen = getCurrentLineLength();
 
   const payload = preset
-    ? { preset, max_length: mode === 'poetry' ? lineLen : maxLen, mode }
-    : { chars, max_length: mode === 'poetry' ? lineLen : maxLen, mode };
+    ? { preset, max_length: mode === 'poetry' ? lineLen * 4 : maxLen, mode, line_length: lineLen, lines_per_poem: 4 }
+    : { chars, max_length: mode === 'poetry' ? lineLen * 4 : maxLen, mode, line_length: lineLen, lines_per_poem: 4 };
   fetch('/api/estimate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -584,12 +584,11 @@ function updateCharsetInfo() {
       const totalStr = data.total;
       const isHuge = totalStr.length > 9 || (totalStr.length > 7 && maxLen > 3);
       let extra = '';
-      if (mode === 'poetry' && data.total_raw && data.total_raw > 0) {
-        const poems = Math.floor(data.total_raw / 4);
-        extra = ` | 约 ${formatNum(poems)} 首诗`;
+      if (mode === 'poetry' && data.total_raw && data.total_raw > 0 && !isHuge) {
+        extra = ` | 约 ${formatNum(data.total_raw)} 首诗`;
       }
       document.getElementById('charsetInfo').textContent =
-        `字符数: ${data.chars_len} | 估算${mode === 'poetry' ? '行' : '组合'}: ${isHuge ? '过大' : formatNumStr(totalStr)}${extra}`;
+        `字符数: ${data.chars_len} | 估算${mode === 'poetry' ? '诗' : '组合'}: ${isHuge ? '过大' : formatNumStr(totalStr)}${extra}`;
 
       if (isHuge) {
         warning.textContent = '⚠ 警告: 组合总数过大，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。';
@@ -656,10 +655,11 @@ function startStream(resume = false) {
   const baseParams = `session_id=${encodeURIComponent(sessionId)}&mode=${mode}&max_length=${currentMaxLen}`;
   if (mode === 'poetry') {
     const ll = getCurrentLineLength();
+    const lpp = 4;
     if (currentPresetName) {
-      url = `/stream?${baseParams}&preset=${encodeURIComponent(currentPresetName)}&line_length=${ll}&lines_per_poem=4`;
+      url = `/stream?${baseParams}&preset=${encodeURIComponent(currentPresetName)}&line_length=${ll}&lines_per_poem=${lpp}`;
     } else {
-      url = `/stream?${baseParams}&chars=${encodeURIComponent(currentChars)}&line_length=${ll}&lines_per_poem=4`;
+      url = `/stream?${baseParams}&chars=${encodeURIComponent(currentChars)}&line_length=${ll}&lines_per_poem=${lpp}`;
     }
   } else {
     if (currentPresetName) {
@@ -757,8 +757,8 @@ function fetchStats() {
       const isPoetry = data.mode === 'poetry';
       const genLabel = document.getElementById('genCountLabel');
       const totalLabel = document.getElementById('totalEstimateLabel');
-      if (genLabel) genLabel.textContent = isPoetry ? '已生成行' : '已生成';
-      if (totalLabel) totalLabel.textContent = isPoetry ? '估算行数' : '估算总数';
+      if (genLabel) genLabel.textContent = isPoetry ? '已生成诗' : '已生成';
+      if (totalLabel) totalLabel.textContent = isPoetry ? '估算诗数' : '估算总数';
 
       genCount.textContent = formatNumStr(String(data.generated || 0));
       totalEstimate.textContent = formatNumStr(data.total || '0');
@@ -941,8 +941,9 @@ async function startGeneration() {
 
   const mode = currentMode;
   const poetryLineLen = getCurrentLineLength();
+  const linesPerPoem = 4;
   const payloadMode = mode;
-  const payloadMaxLen = mode === 'poetry' ? poetryLineLen : currentMaxLen;
+  const payloadMaxLen = mode === 'poetry' ? poetryLineLen * linesPerPoem : currentMaxLen;
 
   const payload = currentPreset
     ? { session_id: sessionId, preset: currentPreset, max_length: payloadMaxLen, mode: payloadMode }

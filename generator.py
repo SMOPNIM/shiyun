@@ -183,7 +183,8 @@ _stop_events: Dict[str, threading.Event] = {}
 
 
 def create_session(session_id: str, chars: str, max_length: int,
-                   mode: str = "enum", line_length: int = 5) -> Dict:
+                   mode: str = "enum", line_length: int = 5,
+                   lines_per_poem: int = 4) -> Dict:
     with _session_lock:
         _session_state[session_id] = {
             "chars": chars,
@@ -194,6 +195,7 @@ def create_session(session_id: str, chars: str, max_length: int,
             "running": True,
             "mode": mode,
             "line_length": line_length,
+            "lines_per_poem": lines_per_poem,
         }
         _stop_events[session_id] = threading.Event()
     return get_session_stats(session_id)
@@ -231,7 +233,10 @@ def get_session_stats(session_id: str) -> Dict:
         elapsed = (end - state["start_time"]).total_seconds()
         if state.get("mode") == "poetry":
             ll = state.get("line_length", 5)
-            total = estimate_total(len(state["chars"]), ll) - estimate_total(len(state["chars"]), ll - 1)
+            lpp = state.get("lines_per_poem", 4)
+            poem_len = ll * lpp
+            raw = len(state["chars"]) ** poem_len
+            total = raw if raw <= 10 ** 18 else 10 ** 18 + 1
         else:
             total = estimate_total(len(state["chars"]), state["max_length"])
         running = not is_stopped(session_id) and state["running"]
@@ -332,23 +337,27 @@ def stream_combinations(session_id: str, chars: str, max_length: int,
 def poetry_stream_combinations(session_id: str, chars: str, max_length: int,
                                 line_length: int = 5, lines_per_poem: int = 4,
                                 resume_state: Optional[Dict] = None):
+    poem_length = line_length * lines_per_poem
     if resume_state:
         state = StreamState.deserialize(resume_state)
-        create_session(session_id, chars, max_length, mode="poetry", line_length=line_length)
+        create_session(session_id, chars, poem_length, mode="poetry", line_length=line_length, lines_per_poem=lines_per_poem)
         with _session_lock:
             if session_id in _session_state:
                 _session_state[session_id]["generated"] = state.generated
         clear_stop(session_id)
-        poem_buffer = resume_state.get("_poem_buffer", [])
     else:
-        create_session(session_id, chars, max_length, mode="poetry", line_length=line_length)
-        state = StreamState(chars, max_length)
-        state.current_length = line_length
-        state.indices = [0] * line_length
-        poem_buffer = []
+        create_session(session_id, chars, poem_length, mode="poetry", line_length=line_length)
+        state = StreamState(chars, poem_length)
+        state.current_length = poem_length
+        state.indices = [0] * poem_length
 
     with _session_lock:
         _active_generators[session_id] = state
+
+    def combo_to_poem(combo: str, index: int) -> str:
+        lines = [combo[i:i+line_length] for i in range(0, len(combo), line_length)]
+        poem_data = {"type": "poem", "lines": lines, "index": index}
+        return f"data: {json.dumps(poem_data, ensure_ascii=False)}\n\n"
 
     try:
         while True:
@@ -357,27 +366,13 @@ def poetry_stream_combinations(session_id: str, chars: str, max_length: int,
             combo = state.next()
             if combo is None:
                 break
-            poem_buffer.append(combo)
-            if len(poem_buffer) == lines_per_poem:
-                poem_data = {
-                    "type": "poem",
-                    "lines": list(poem_buffer),
-                    "index": (state.generated - 1) // lines_per_poem,
-                }
-                yield f"data: {json.dumps(poem_data, ensure_ascii=False)}\n\n"
-                poem_buffer.clear()
+            poem_index = state.generated - 1
+            yield combo_to_poem(combo, poem_index)
             if state.generated % 500 == 0:
                 with _session_lock:
                     if session_id in _session_state:
                         _session_state[session_id]["generated"] = state.generated
     finally:
-        if poem_buffer:
-            poem_data = {
-                "type": "poem",
-                "lines": list(poem_buffer),
-                "partial": True,
-            }
-            yield f"data: {json.dumps(poem_data, ensure_ascii=False)}\n\n"
         with _session_lock:
             _active_generators.pop(session_id, None)
             if session_id in _session_state:
@@ -388,11 +383,7 @@ def poetry_stream_combinations(session_id: str, chars: str, max_length: int,
                     ss["end_time"] = datetime.now()
             if session_id in _pause_requested:
                 _pause_requested.discard(session_id)
-                serialized = state.serialize()
-                serialized["_poem_buffer"] = poem_buffer
-                serialized["mode"] = "poetry"
-                serialized["line_length"] = line_length
-                _paused_states[session_id] = serialized
+                _paused_states[session_id] = state.serialize()
 
 
 # ============================================================
