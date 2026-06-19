@@ -9,7 +9,7 @@ import os
 import threading
 import unicodedata
 from datetime import datetime
-from typing import Dict, Generator, Optional
+from typing import Dict, Generator, List, Optional
 
 CJK_THOUSAND = (
     "天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳"
@@ -45,6 +45,7 @@ CJK_THOUSAND = (
     "指薪修祜永绥吉劭矩步引领俯仰廊庙束带矜庄徘徊瞻眺孤陋寡闻愚蒙等诮"
     "谓语助者焉哉乎也"
 )
+
 
 def build_utf8_charset() -> str:
     chars = []
@@ -111,27 +112,71 @@ def estimate_total(chars_len: int, max_length: int) -> int:
     return total
 
 
-def generate_combinations(chars: str, max_length: int) -> Generator[str, None, None]:
-    n = len(chars)
-    if n == 0:
-        return
+# ============================================================
+# StreamState – stateful combination generator
+# ============================================================
 
-    for length in range(1, max_length + 1):
-        indices = [0] * length
-        while True:
-            yield "".join(chars[i] for i in indices)
+class StreamState:
+    def __init__(self, chars: str, max_length: int,
+                 current_length: int = 1, indices: Optional[List[int]] = None,
+                 generated: int = 0):
+        self.chars = chars
+        self.max_length = max_length
+        self.current_length = current_length
+        self.indices = indices or [0]
+        self.generated = generated
 
-            pos = length - 1
-            while pos >= 0 and indices[pos] == n - 1:
-                indices[pos] = 0
-                pos -= 1
-            if pos < 0:
-                break
-            indices[pos] += 1
+    def _advance(self) -> bool:
+        n = len(self.chars)
+        pos = self.current_length - 1
+        while pos >= 0 and self.indices[pos] == n - 1:
+            self.indices[pos] = 0
+            pos -= 1
+        if pos < 0:
+            self.current_length += 1
+            if self.current_length > self.max_length:
+                return False
+            self.indices = [0] * self.current_length
+        else:
+            self.indices[pos] += 1
+        return True
+
+    def peek(self) -> str:
+        return "".join(self.chars[i] for i in self.indices)
+
+    def next(self) -> Optional[str]:
+        if self.current_length > self.max_length:
+            return None
+        result = self.peek()
+        self.generated += 1
+        if not self._advance():
+            self.current_length = self.max_length + 1
+        return result
+
+    def serialize(self) -> Dict:
+        return {
+            "chars": self.chars,
+            "max_length": self.max_length,
+            "current_length": self.current_length,
+            "indices": list(self.indices),
+            "generated": self.generated,
+        }
+
+    @classmethod
+    def deserialize(cls, data: Dict) -> "StreamState":
+        return cls(
+            chars=data["chars"],
+            max_length=data["max_length"],
+            current_length=data["current_length"],
+            indices=data["indices"],
+            generated=data["generated"],
+        )
 
 
-# In-memory session state
-# session_id -> {"generated": int, "start_time": datetime, "running": bool}
+# ============================================================
+# Session management
+# ============================================================
+
 _session_state: Dict[str, Dict] = {}
 _session_lock = threading.RLock()
 _stop_events: Dict[str, threading.Event] = {}
@@ -168,6 +213,12 @@ def is_stopped(session_id: str) -> bool:
         return ev is not None and ev.is_set()
 
 
+def clear_stop(session_id: str):
+    with _session_lock:
+        if session_id in _stop_events:
+            _stop_events[session_id].clear()
+
+
 def get_session_stats(session_id: str) -> Dict:
     with _session_lock:
         state = _session_state.get(session_id)
@@ -180,7 +231,7 @@ def get_session_stats(session_id: str) -> Dict:
         rate = state["generated"] / elapsed if elapsed > 0 else 0
         return {
             "generated": state["generated"],
-            "total": total,
+            "total": str(total),
             "elapsed": round(elapsed, 2),
             "running": running,
             "chars_len": len(state["chars"]),
@@ -189,41 +240,135 @@ def get_session_stats(session_id: str) -> Dict:
         }
 
 
-def increment_generated(session_id: str):
-    with _session_lock:
-        if session_id in _session_state:
-            _session_state[session_id]["generated"] += 1
+# ============================================================
+# Streaming with pause / resume support
+# ============================================================
+
+_paused_states: Dict[str, Dict] = {}
+_active_generators: Dict[str, StreamState] = {}
+_pause_requested: set = set()
 
 
-def mark_complete(session_id: str):
+def pause_session(session_id: str):
     with _session_lock:
+        _pause_requested.add(session_id)
+        if session_id in _stop_events:
+            _stop_events[session_id].set()
+        gen = _active_generators.get(session_id)
+        if gen:
+            _paused_states[session_id] = gen.serialize()
         if session_id in _session_state:
             state = _session_state[session_id]
             state["running"] = False
-            state["end_time"] = datetime.now()
-
-
-def stream_combinations(session_id: str, chars: str, max_length: int):
-    create_session(session_id, chars, max_length)
-    count = 0
-    try:
-        for combo in generate_combinations(chars, max_length):
-            if is_stopped(session_id):
-                break
-            count += 1
-            yield f"data: {combo}\n\n"
-            if count % 500 == 0:
-                with _session_lock:
-                    if session_id in _session_state:
-                        _session_state[session_id]["generated"] = count
-    finally:
-        with _session_lock:
-            if session_id in _session_state:
-                state = _session_state[session_id]
-                state["generated"] = count
-                state["running"] = False
+            if state["end_time"] is None:
                 state["end_time"] = datetime.now()
 
+
+def get_paused_state(session_id: str) -> Optional[Dict]:
+    with _session_lock:
+        return _paused_states.get(session_id)
+
+
+def clear_paused_state(session_id: str):
+    with _session_lock:
+        _paused_states.pop(session_id, None)
+
+
+def stream_combinations(session_id: str, chars: str, max_length: int,
+                        resume_state: Optional[Dict] = None):
+    if resume_state:
+        state = StreamState.deserialize(resume_state)
+        create_session(session_id, chars, max_length)
+        with _session_lock:
+            if session_id in _session_state:
+                _session_state[session_id]["generated"] = state.generated
+        clear_stop(session_id)
+    else:
+        create_session(session_id, chars, max_length)
+        state = StreamState(chars, max_length)
+
+    with _session_lock:
+        _active_generators[session_id] = state
+
+    try:
+        while True:
+            if is_stopped(session_id):
+                break
+            combo = state.next()
+            if combo is None:
+                break
+            yield f"data: {combo}\n\n"
+            if state.generated % 500 == 0:
+                with _session_lock:
+                    if session_id in _session_state:
+                        _session_state[session_id]["generated"] = state.generated
+    finally:
+        with _session_lock:
+            _active_generators.pop(session_id, None)
+            if session_id in _session_state:
+                ss = _session_state[session_id]
+                ss["generated"] = state.generated
+                ss["running"] = False
+                if ss["end_time"] is None:
+                    ss["end_time"] = datetime.now()
+            if session_id in _pause_requested:
+                _pause_requested.discard(session_id)
+                _paused_states[session_id] = state.serialize()
+
+
+# ============================================================
+# External state save / load (to disk)
+# ============================================================
+
+def save_state_to_file(state: Dict, output_dir: str = "output") -> str:
+    os.makedirs(output_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(output_dir, f"session_{ts}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def list_saved_states(output_dir: str = "output") -> List[Dict]:
+    os.makedirs(output_dir, exist_ok=True)
+    files = []
+    for fname in sorted(os.listdir(output_dir), reverse=True):
+        if fname.startswith("session_") and fname.endswith(".json"):
+            fpath = os.path.join(output_dir, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                chars_len = len(data.get("chars", ""))
+                max_length = data.get("max_length", 0)
+                generated = data.get("generated", 0)
+                files.append({
+                    "filename": fname,
+                    "path": fpath,
+                    "chars_len": chars_len,
+                    "max_length": max_length,
+                    "generated": generated,
+                    "total": str(estimate_total(chars_len, max_length)),
+                    "timestamp": datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
+                })
+            except Exception:
+                pass
+    return files
+
+
+def load_state_from_file(filename: str, output_dir: str = "output") -> Optional[Dict]:
+    fpath = os.path.join(output_dir, filename)
+    if not os.path.exists(fpath):
+        return None
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+# ============================================================
+# Save combination results to file (original, unchanged)
+# ============================================================
 
 def save_combinations(
     chars: str, max_length: int, filepath: str, compress: bool = True,
@@ -259,3 +404,35 @@ def save_combinations(
         f.close()
 
     return {"path": path, "count": count, "compress": compress}
+
+
+# kept for backward compatibility with save_combinations
+def generate_combinations(chars: str, max_length: int,
+                          start_state: Optional[Dict] = None) -> Generator[str, None, None]:
+    if start_state:
+        ss = StreamState.deserialize(start_state)
+        while True:
+            combo = ss.next()
+            if combo is None:
+                break
+            yield combo
+    else:
+        for combo in _generate_from_scratch(chars, max_length):
+            yield combo
+
+
+def _generate_from_scratch(chars: str, max_length: int) -> Generator[str, None, None]:
+    n = len(chars)
+    if n == 0:
+        return
+    for length in range(1, max_length + 1):
+        indices = [0] * length
+        while True:
+            yield "".join(chars[i] for i in indices)
+            pos = length - 1
+            while pos >= 0 and indices[pos] == n - 1:
+                indices[pos] = 0
+                pos -= 1
+            if pos < 0:
+                break
+            indices[pos] += 1

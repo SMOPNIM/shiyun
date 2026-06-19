@@ -300,14 +300,22 @@
     <div class="form-row" style="margin-bottom:0">
       <div class="btn-group">
         <button class="btn btn-primary" id="startBtn">☁ 开始吟诗</button>
+        <button class="btn btn-primary" id="resumeBtn" style="display:none">▶ 继续</button>
         <button class="btn btn-danger" id="stopBtn" disabled>✕ 停止</button>
-        <button class="btn btn-jade" id="saveBtn" disabled>💾 保存</button>
+        <button class="btn btn-jade" id="saveBtn" disabled>💾 保存结果</button>
+        <button class="btn btn-jade" id="saveStateBtn" disabled style="display:none">📦 保存状态</button>
       </div>
       <div class="checkbox-group" style="margin-left:auto">
         <input type="checkbox" id="compressCheck" checked>
         <label for="compressCheck" style="color:var(--text-secondary);font-size:0.85em">Gzip压缩保存</label>
       </div>
     </div>
+  </div>
+
+  <!-- Saved states -->
+  <div class="card" id="statesCard" style="display:none">
+    <div class="card-title">📂 已保存的状态</div>
+    <div id="statesList"></div>
   </div>
 
   <!-- Stats -->
@@ -353,6 +361,7 @@
       <span class="text-muted" style="font-size:0.8em;font-weight:400" id="resultCounter">显示 0 条</span>
     </div>
     <div class="results-area" id="resultsArea"></div>
+    <div id="pauseOverlay" style="display:none;text-align:center;padding:20px;color:var(--gold);font-size:1.2em">⏸ 已暂停</div>
   </div>
 </div>
 
@@ -365,11 +374,13 @@ let presetsData = {};
 let eventSource = null;
 let sessionId = 'default_' + Date.now();
 let isRunning = false;
+let isPaused = false;
 let statsTimer = null;
 let displayBuffer = [];
 let displayTimer = null;
 const MAX_DISPLAY = 5000;
 let resultCount = 0;
+let pausedState = null;
 
 function formatNumStr(s) {
   if (s.length > 12) return '过大';
@@ -392,7 +403,6 @@ function formatTime(s) {
   return `${m}分${sec}秒`;
 }
 
-// Toast
 function showToast(msg, duration = 3000) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -406,8 +416,10 @@ const presetSelect = document.getElementById('presetSelect');
 const customCharset = document.getElementById('customCharset');
 const charsetInfo = document.getElementById('charsetInfo');
 const startBtn = document.getElementById('startBtn');
+const resumeBtn = document.getElementById('resumeBtn');
 const stopBtn = document.getElementById('stopBtn');
 const saveBtn = document.getElementById('saveBtn');
+const saveStateBtn = document.getElementById('saveStateBtn');
 const compressCheck = document.getElementById('compressCheck');
 const genCount = document.getElementById('genCount');
 const totalEstimate = document.getElementById('totalEstimate');
@@ -422,8 +434,10 @@ const warning = document.getElementById('warning');
 const saveProgress = document.getElementById('saveProgress');
 const saveText = document.getElementById('saveText');
 const saveFill = document.getElementById('saveFill');
+const pauseOverlay = document.getElementById('pauseOverlay');
+const statesCard = document.getElementById('statesCard');
+const statesList = document.getElementById('statesList');
 
-// Load presets
 async function loadPresets() {
   try {
     const resp = await fetch(PRESETS_URL);
@@ -472,8 +486,7 @@ function updateCharsetInfo() {
       }
     })
     .catch(() => {
-      document.getElementById('charsetInfo').textContent =
-        `估算组合: 计算失败`;
+      document.getElementById('charsetInfo').textContent = `估算组合: 计算失败`;
     });
 }
 
@@ -486,7 +499,7 @@ let currentChars = '';
 let currentPresetName = '';
 let currentMaxLen = 1;
 
-function startStream() {
+function startStream(resume = false) {
   if (eventSource) {
     eventSource.close();
     eventSource = null;
@@ -498,10 +511,12 @@ function startStream() {
   } else {
     url = `/stream?session_id=${encodeURIComponent(sessionId)}&chars=${encodeURIComponent(currentChars)}&max_length=${currentMaxLen}`;
   }
+  if (resume) url += '&resume=1';
   eventSource = new EventSource(url);
 
   eventSource.onmessage = (e) => {
     if (!isRunning) isRunning = true;
+    if (isPaused) isPaused = false;
     const item = e.data;
     displayBuffer.push(item);
     resultCount++;
@@ -537,24 +552,14 @@ function flushDisplay() {
     }
     resultsArea.appendChild(fragment);
 
-    // Trim excessive items
     const children = resultsArea.children;
     if (children.length > MAX_DISPLAY) {
-      while (children.length > MAX_DISPLAY) {
-        children[0].remove();
-      }
+      while (children.length > MAX_DISPLAY) children[0].remove();
     }
 
     resultCounter.textContent = `显示 ${children.length} 条`;
-
-    // Auto scroll
     resultsArea.scrollTop = resultsArea.scrollHeight;
   });
-}
-
-// Stats
-function updateStats() {
-  // Stats are fetched periodically from server
 }
 
 function fetchStats() {
@@ -574,27 +579,33 @@ function fetchStats() {
           const pct = Math.min((gen / total) * 100, 100);
           progressFill.style.width = pct + '%';
           progressPercent.textContent = pct.toFixed(4) + '%';
-          progressLabel.textContent = isRunning ? '生成中...' : (gen >= total ? '完成！' : '已停止');
+          progressLabel.textContent = isRunning ? '生成中...' : (gen >= total ? '完成！' : (isPaused ? '已暂停' : '已停止'));
           return;
         }
       }
       progressFill.style.width = '0%';
       progressPercent.textContent = '过大';
-      progressLabel.textContent = isRunning ? '生成中...' : '已停止';
+      progressLabel.textContent = isRunning ? '生成中...' : (isPaused ? '已暂停' : '已停止');
     })
     .catch(() => {});
 }
 
 function updateUI() {
-  startBtn.disabled = isRunning;
-  stopBtn.disabled = !isRunning;
-  saveBtn.disabled = !isRunning && resultCount === 0;
-  if (!isRunning) {
+  startBtn.disabled = isRunning || isPaused;
+  startBtn.style.display = isPaused ? 'none' : '';
+  resumeBtn.style.display = isPaused ? '' : 'none';
+  stopBtn.disabled = !isRunning && !isPaused;
+  saveBtn.disabled = !isRunning && !isPaused && resultCount === 0;
+  saveStateBtn.disabled = !isPaused;
+  saveStateBtn.style.display = isPaused ? '' : 'none';
+  pauseOverlay.style.display = isPaused ? 'block' : 'none';
+
+  if (!isRunning && !isPaused) {
     progressLabel.textContent = resultCount > 0 ? '已停止' : '等待开始...';
   }
 }
 
-// Save
+// Save combined results to .gz
 async function saveGeneration() {
   const compress = compressCheck.checked;
   saveProgress.classList.add('active');
@@ -613,7 +624,6 @@ async function saveGeneration() {
     });
     const data = await resp.json();
     if (data.status === 'saving') {
-      // Poll save progress
       const pollTimer = setInterval(async () => {
         const sr = await fetch(`/api/save_status?session_id=${encodeURIComponent(sessionId)}`);
         const sd = await sr.json();
@@ -635,71 +645,53 @@ async function saveGeneration() {
   }
 }
 
-// Start
-async function startGeneration() {
-  if (isRunning) return;
+// ============================================================
+// Pause / Resume / Start / Stop
+// ============================================================
 
-  currentChars = getCurrentChars();
-  const currentPreset = getCurrentPreset();
-  currentMaxLen = parseInt(maxLengthInput.value);
-  if (!currentMaxLen || currentMaxLen < 1) {
-    showToast('长度必须大于0', 3000);
-    return;
-  }
-
-  if (!currentChars && !currentPreset) {
-    showToast('请选择或输入字符集', 3000);
-    return;
-  }
-
-  // Reset display
-  resultsArea.innerHTML = '';
-  resultCounter.textContent = '显示 0 条';
-  resultCount = 0;
-  displayBuffer = [];
-  progressFill.style.width = '0%';
-  progressPercent.textContent = '0%';
-  progressLabel.textContent = '启动中...';
-  saveProgress.classList.remove('active');
-
-  sessionId = 'default_' + Date.now();
-
-  const payload = currentPreset
-    ? { session_id: sessionId, preset: currentPreset, max_length: currentMaxLen }
-    : { session_id: sessionId, chars: currentChars, max_length: currentMaxLen };
-
+async function pauseGeneration() {
   try {
-    const resp = await fetch('/api/start', {
+    await fetch('/api/pause', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ session_id: sessionId })
+    });
+  } catch(e) {}
+
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+  isRunning = false;
+  isPaused = true;
+  if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+  updateUI();
+  fetchStats();
+  showToast('已暂停，可继续或保存状态', 2000);
+}
+
+async function resumeGeneration() {
+  if (isRunning) return;
+  try {
+    const resp = await fetch('/api/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId })
     });
     const data = await resp.json();
-    if (data.error) {
-      showToast('错误: ' + data.error, 3000);
-      return;
-    }
-
+    if (data.error) { showToast('错误: ' + data.error, 3000); return; }
+    isPaused = false;
     isRunning = true;
     updateUI();
-
-    // Store preset for SSE
-    currentPresetName = currentPreset;
-    // Start SSE
-    startStream();
-
-    // Start polling stats
     if (statsTimer) clearInterval(statsTimer);
     statsTimer = setInterval(fetchStats, 200);
-
-    const totalDisplay = data.total.length > 12 ? '过大' : formatNumStr(data.total);
-    showToast(`开始枚举！组合总数: ${totalDisplay}`, 2000);
+    startStream(true);
+    showToast('继续吟诗...', 1500);
   } catch(e) {
-    showToast('启动失败: ' + e.message, 3000);
+    showToast('继续失败: ' + e.message, 3000);
   }
 }
 
-// Stop
 async function stopGeneration() {
   try {
     await fetch('/api/stop', {
@@ -714,29 +706,182 @@ async function stopGeneration() {
     eventSource = null;
   }
   isRunning = false;
-  if (statsTimer) {
-    clearInterval(statsTimer);
-    statsTimer = null;
-  }
+  isPaused = false;
+  if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
   updateUI();
   fetchStats();
-  progressLabel.textContent = '已停止';
-  showToast('已停止生成', 2000);
+  showToast('已停止', 2000);
 }
 
+async function startGeneration() {
+  if (isRunning || isPaused) return;
+
+  currentChars = getCurrentChars();
+  const currentPreset = getCurrentPreset();
+  currentMaxLen = parseInt(maxLengthInput.value);
+  if (!currentMaxLen || currentMaxLen < 1) { showToast('长度必须大于0', 3000); return; }
+  if (!currentChars && !currentPreset) { showToast('请选择或输入字符集', 3000); return; }
+
+  resultsArea.innerHTML = '';
+  document.getElementById('resultCounter').textContent = '显示 0 条';
+  resultCount = 0;
+  displayBuffer = [];
+  progressFill.style.width = '0%';
+  progressPercent.textContent = '0%';
+  progressLabel.textContent = '启动中...';
+  saveProgress.classList.remove('active');
+  pauseOverlay.style.display = 'none';
+
+  sessionId = 'default_' + Date.now();
+
+  const payload = currentPreset
+    ? { session_id: sessionId, preset: currentPreset, max_length: currentMaxLen }
+    : { session_id: sessionId, chars: currentChars, max_length: currentMaxLen };
+
+  try {
+    const resp = await fetch('/api/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (data.error) { showToast('错误: ' + data.error, 3000); return; }
+
+    isRunning = true;
+    currentPresetName = currentPreset;
+    updateUI();
+    startStream();
+    if (statsTimer) clearInterval(statsTimer);
+    statsTimer = setInterval(fetchStats, 200);
+
+    const totalDisplay = data.total.length > 12 ? '过大' : formatNumStr(data.total);
+    showToast(`开始枚举！组合总数: ${totalDisplay}`, 2000);
+  } catch(e) {
+    showToast('启动失败: ' + e.message, 3000);
+  }
+}
+
+// ============================================================
+// Save / Load state to/from disk
+// ============================================================
+
+async function saveStateToDisk() {
+  try {
+    const resp = await fetch('/api/save_state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId })
+    });
+    const data = await resp.json();
+    if (data.status === 'saved') {
+      showToast(`状态已保存到文件: ${data.file}`, 3000);
+      refreshStatesList();
+    } else {
+      showToast('保存状态失败', 3000);
+    }
+  } catch(e) {
+    showToast('保存状态失败: ' + e.message, 3000);
+  }
+}
+
+async function refreshStatesList() {
+  try {
+    const resp = await fetch('/api/list_states');
+    const files = await resp.json();
+    if (files.length === 0) {
+      statesCard.style.display = 'none';
+      return;
+    }
+    statesCard.style.display = 'block';
+    statesList.innerHTML = '';
+    for (const f of files) {
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)';
+      div.innerHTML = `
+        <span style="font-size:0.85em;color:var(--text-secondary)">
+          ${f.filename}<br>
+          <small>已生成 ${formatNumStr(String(f.generated))} / ${formatNumStr(f.total)} | 字符集 ${f.chars_len} 字符 × 最长 ${f.max_length}</small>
+        </span>
+        <button class="btn btn-jade" style="padding:4px 12px;font-size:0.8em" onclick="loadStateFromDisk('${f.filename}')">加载</button>
+      `;
+      statesList.appendChild(div);
+    }
+  } catch(e) {}
+}
+
+async function loadStateFromDisk(filename) {
+  if (isRunning) { showToast('请先停止当前生成', 2000); return; }
+  try {
+    const resp = await fetch(`/api/load_state/${encodeURIComponent(filename)}`);
+    const state = await resp.json();
+    if (state.error) { showToast('加载失败', 3000); return; }
+
+    // Populate the UI with loaded state
+    pausedState = state;
+    const chars = state.chars || '';
+    currentMaxLen = state.max_length || 1;
+    maxLengthInput.value = currentMaxLen;
+
+    // Set preset or custom
+    if (chars.length <= 100) {
+      customCharset.value = chars;
+    } else {
+      customCharset.value = '';
+      // Try to find matching preset
+      let foundPreset = '';
+      for (const [key, p] of Object.entries(presetsData)) {
+        if (p.chars === chars) { foundPreset = key; break; }
+      }
+      if (foundPreset) {
+        presetSelect.value = foundPreset;
+      } else {
+        customCharset.value = '[已加载状态] 自定义字符集';
+      }
+    }
+
+    currentChars = chars;
+    sessionId = 'default_' + Date.now();
+    resultCount = state.generated || 0;
+
+    // Show stats from loaded state
+    genCount.textContent = formatNumStr(String(state.generated || 0));
+    progressLabel.textContent = `已加载状态 (${formatNumStr(String(state.generated || 0))} 条已生成)`;
+
+    // Setup resume
+    isPaused = true;
+    isRunning = false;
+    updateUI();
+    showToast(`已加载状态: ${filename}`, 3000);
+  } catch(e) {
+    showToast('加载失败: ' + e.message, 3000);
+  }
+}
+
+// ============================================================
 // Event listeners
+// ============================================================
 startBtn.addEventListener('click', startGeneration);
+resumeBtn.addEventListener('click', resumeGeneration);
 stopBtn.addEventListener('click', stopGeneration);
 saveBtn.addEventListener('click', saveGeneration);
+saveStateBtn.addEventListener('click', saveStateToDisk);
+
+// Override stop to also pause state cleanup
+const origStop = stopBtn.click;
+document.querySelector('#stopBtn').addEventListener('click', () => {
+  isPaused = false;
+  pausedState = null;
+});
 
 // Init
 loadPresets();
 updateUI();
+refreshStatesList();
 
-// Periodic stats even when not running
 setInterval(() => {
   if (!isRunning) fetchStats();
 }, 2000);
+setInterval(refreshStatesList, 10000);
 </script>
 </body>
 </html>

@@ -13,9 +13,15 @@ from flask import Flask, Response, jsonify, render_template, request
 from generator import (
     PRESETS,
     estimate_total,
+    get_paused_state,
     get_session_stats,
+    clear_paused_state,
     is_stopped,
+    list_saved_states,
+    load_state_from_file,
+    pause_session,
     save_combinations,
+    save_state_to_file,
     stop_session,
     stream_combinations,
 )
@@ -82,7 +88,6 @@ def start():
     if max_len < 1:
         return jsonify({"error": "长度必须大于0"}), 400
 
-    # Just record the session params; actual streaming happens on /stream
     total = estimate_total(len(chars), max_len)
     return jsonify({
         "status": "ready",
@@ -102,12 +107,34 @@ def stop():
     return jsonify({"status": "stopped"})
 
 
+@app.route("/api/pause", methods=["POST"])
+def pause():
+    data = request.json
+    session_id = data.get("session_id", "default")
+    pause_session(session_id)
+    return jsonify({"status": "pausing"})
+
+
+@app.route("/api/resume", methods=["POST"])
+def resume():
+    data = request.json
+    session_id = data.get("session_id", "default")
+    paused = get_paused_state(session_id)
+    if not paused:
+        return jsonify({"error": "没有暂停的会话"}), 404
+    return jsonify({
+        "status": "ready",
+        "resume_state": paused,
+        "chars_len": len(paused.get("chars", "")),
+        "max_length": paused.get("max_length", 1),
+        "generated": paused.get("generated", 0),
+    })
+
+
 @app.route("/api/stats")
 def stats():
     session_id = request.args.get("session_id", "default")
-    stats = get_session_stats(session_id)
-    stats["total"] = str(stats["total"])
-    return jsonify(stats)
+    return jsonify(get_session_stats(session_id))
 
 
 @app.route("/stream")
@@ -115,6 +142,7 @@ def stream():
     session_id = request.args.get("session_id", "default")
     preset = request.args.get("preset", "")
     chars = request.args.get("chars", "")
+    resume = request.args.get("resume", "")
     if not chars and preset in PRESETS:
         chars = PRESETS[preset]["chars"]
     max_len = int(request.args.get("max_length", 1))
@@ -124,8 +152,14 @@ def stream():
     if max_len < 1:
         return jsonify({"error": "长度必须大于0"}), 400
 
+    resume_state = None
+    if resume == "1":
+        resume_state = get_paused_state(session_id)
+        if resume_state:
+            clear_paused_state(session_id)
+
     def generate():
-        yield from stream_combinations(session_id, chars, max_len)
+        yield from stream_combinations(session_id, chars, max_len, resume_state=resume_state)
 
     return Response(
         generate(),
@@ -204,6 +238,36 @@ def save_status():
             "file": task.get("file", ""),
             "count": task["result"]["count"] if task["result"] else 0,
         })
+
+
+# ============================================================
+# State save/load endpoints
+# ============================================================
+
+@app.route("/api/save_state", methods=["POST"])
+def save_state():
+    data = request.json
+    session_id = data.get("session_id", "default")
+    paused = get_paused_state(session_id)
+    if not paused:
+        return jsonify({"error": "没有暂停的会话"}), 404
+
+    path = save_state_to_file(paused)
+    return jsonify({"status": "saved", "file": os.path.basename(path)})
+
+
+@app.route("/api/list_states")
+def list_states():
+    files = list_saved_states()
+    return jsonify(files)
+
+
+@app.route("/api/load_state/<filename>")
+def load_state(filename):
+    data = load_state_from_file(filename)
+    if not data:
+        return jsonify({"error": "保存的状态不存在"}), 404
+    return jsonify(data)
 
 
 def main():
