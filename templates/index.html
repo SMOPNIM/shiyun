@@ -596,7 +596,7 @@ function updateCharsetInfo() {
       const overflowSentinel = 1000000000000000001;
       let hugeExtra = '';
       if (isHuge && totalRaw > 0) {
-        hugeExtra = totalRaw >= overflowSentinel ? ' (超过 10¹⁸)' : ` (超过 ${formatCompactNum(totalRaw)})`;
+        hugeExtra = totalRaw >= overflowSentinel ? ' (超过 10^18)' : ` (超过 ${formatCompactNum(totalRaw)})`;
       }
       let extra = '';
       if (mode === 'poetry' && totalRaw > 0 && !isHuge) {
