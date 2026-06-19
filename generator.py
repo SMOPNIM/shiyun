@@ -123,6 +123,7 @@ def create_session(session_id: str, chars: str, max_length: int) -> Dict:
             "max_length": max_length,
             "generated": 0,
             "start_time": datetime.now(),
+            "end_time": None,
             "running": True,
         }
         _stop_events[session_id] = threading.Event()
@@ -134,7 +135,10 @@ def stop_session(session_id: str):
         if session_id in _stop_events:
             _stop_events[session_id].set()
         if session_id in _session_state:
-            _session_state[session_id]["running"] = False
+            state = _session_state[session_id]
+            state["running"] = False
+            if state["end_time"] is None:
+                state["end_time"] = datetime.now()
 
 
 def is_stopped(session_id: str) -> bool:
@@ -148,14 +152,16 @@ def get_session_stats(session_id: str) -> Dict:
         state = _session_state.get(session_id)
         if not state:
             return {"generated": 0, "total": 0, "running": False, "elapsed": 0, "rate": 0}
-        elapsed = (datetime.now() - state["start_time"]).total_seconds()
+        end = state["end_time"] or datetime.now()
+        elapsed = (end - state["start_time"]).total_seconds()
         total = estimate_total(len(state["chars"]), state["max_length"])
+        running = not is_stopped(session_id) and state["running"]
         rate = state["generated"] / elapsed if elapsed > 0 else 0
         return {
             "generated": state["generated"],
             "total": total,
             "elapsed": round(elapsed, 2),
-            "running": not is_stopped(session_id) and state["running"],
+            "running": running,
             "chars_len": len(state["chars"]),
             "max_length": state["max_length"],
             "rate": round(rate, 2),
@@ -171,7 +177,9 @@ def increment_generated(session_id: str):
 def mark_complete(session_id: str):
     with _session_lock:
         if session_id in _session_state:
-            _session_state[session_id]["running"] = False
+            state = _session_state[session_id]
+            state["running"] = False
+            state["end_time"] = datetime.now()
 
 
 def stream_combinations(session_id: str, chars: str, max_length: int):
@@ -190,8 +198,10 @@ def stream_combinations(session_id: str, chars: str, max_length: int):
     finally:
         with _session_lock:
             if session_id in _session_state:
-                _session_state[session_id]["generated"] = count
-                _session_state[session_id]["running"] = False
+                state = _session_state[session_id]
+                state["generated"] = count
+                state["running"] = False
+                state["end_time"] = datetime.now()
 
 
 def save_combinations(
