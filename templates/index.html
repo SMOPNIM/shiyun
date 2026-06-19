@@ -362,7 +362,6 @@
             <input type="number" id="customLineLen" value="5" min="1" max="20" style="width:60px;padding:4px 6px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;text-align:center;font-size:0.85em">
           </div>
         </div>
-        <div class="charset-info" id="charsetInfo" style="margin-top:6px">字符数: 0 | 估算组合: 0</div>
       </div>
       <div class="form-group">
         <label>预设字符集</label>
@@ -371,6 +370,13 @@
           <option value="{{ key }}">{{ info.label }}</option>
           {% endfor %}
         </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>自定义字符集 <span class="text-muted">(留空则使用预设)</span></label>
+        <textarea id="customCharset" rows="2" placeholder="在此输入自定义字符..."></textarea>
+        <div class="charset-info" id="charsetInfo" style="margin-top:4px">字符数: 0 | 估算组合: 0</div>
       </div>
     </div>
     <div class="form-row" style="margin-bottom:0">
@@ -387,7 +393,6 @@
       <label for="compressCheck" style="color:var(--text-secondary);font-size:0.85em">Gzip压缩保存</label>
     </div>
   </div>
-  <textarea id="customCharset" style="display:none"></textarea>
 </div>
 
   <!-- Saved states -->
