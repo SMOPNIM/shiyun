@@ -490,6 +490,16 @@ function formatNum(n) {
   return n.toLocaleString('zh-CN');
 }
 
+function formatCompactNum(n) {
+  if (n <= 0) return '0';
+  if (n >= 1000000000000000000) return '超过上限';
+  if (n >= 1e16) return (n / 1e16).toFixed(2) + '亿亿';
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + '万亿';
+  if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
+  if (n >= 1e4) return (n / 1e4).toFixed(2) + '万';
+  return n.toLocaleString('zh-CN');
+}
+
 function formatTime(s) {
   if (s < 60) return s.toFixed(1);
   const m = Math.floor(s / 60);
@@ -582,16 +592,18 @@ function updateCharsetInfo() {
     .then(r => r.json())
     .then(data => {
       const totalStr = data.total;
+      const totalRaw = data.total_raw || 0;
       const isHuge = totalStr.length > 9 || (totalStr.length > 7 && maxLen > 3);
+      const hugeExtra = isHuge && totalRaw > 0 ? ` (超过 ${formatCompactNum(totalRaw)})` : '';
       let extra = '';
-      if (mode === 'poetry' && data.total_raw && data.total_raw > 0 && !isHuge) {
-        extra = ` | 约 ${formatNum(data.total_raw)} 首诗`;
+      if (mode === 'poetry' && totalRaw > 0 && !isHuge) {
+        extra = ` | 约 ${formatNum(totalRaw)} 首诗`;
       }
       document.getElementById('charsetInfo').textContent =
-        `字符数: ${data.chars_len} | 估算${mode === 'poetry' ? '诗' : '组合'}: ${isHuge ? '过大' : formatNumStr(totalStr)}${extra}`;
+        `字符数: ${data.chars_len} | 估算${mode === 'poetry' ? '诗' : '组合'}: ${isHuge ? '过大' : formatNumStr(totalStr)}${hugeExtra}${extra}`;
 
       if (isHuge) {
-        warning.textContent = '⚠ 警告: 组合总数过大，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。';
+        warning.textContent = `⚠ 警告: 组合总数过大${hugeExtra}，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。`;
         warning.classList.add('active');
       } else {
         warning.classList.remove('active');
