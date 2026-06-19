@@ -450,7 +450,6 @@ function updateCharsetInfo() {
   const chars = getCurrentChars();
   const preset = getCurrentPreset();
   const maxLen = Math.max(1, parseInt(maxLengthInput.value) || 0);
-  const n = preset ? '?' : chars.length;
 
   const payload = preset ? { preset, max_length: maxLen } : { chars, max_length: maxLen };
   fetch('/api/estimate', {
@@ -463,7 +462,7 @@ function updateCharsetInfo() {
       const totalStr = data.total;
       const isHuge = totalStr.length > 9 || (totalStr.length > 7 && maxLen > 3);
       document.getElementById('charsetInfo').textContent =
-        `字符数: ${n} | 估算组合: ${isHuge ? '过大' : formatNumStr(totalStr)}`;
+        `字符数: ${data.chars_len} | 估算组合: ${isHuge ? '过大' : formatNumStr(totalStr)}`;
 
       if (isHuge) {
         warning.textContent = '⚠ 警告: 组合总数过大，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。';
@@ -474,7 +473,7 @@ function updateCharsetInfo() {
     })
     .catch(() => {
       document.getElementById('charsetInfo').textContent =
-        `字符数: ${n} | 估算组合: 计算失败`;
+        `估算组合: 计算失败`;
     });
 }
 
