@@ -262,6 +262,10 @@ def pause_session(session_id: str):
             state["running"] = False
             if state["end_time"] is None:
                 state["end_time"] = datetime.now()
+    # save latest session outside lock
+    paused = get_paused_state(session_id)
+    if paused:
+        save_latest_session(paused)
 
 
 def get_paused_state(session_id: str) -> Optional[Dict]:
@@ -320,6 +324,9 @@ def stream_combinations(session_id: str, chars: str, max_length: int,
 # External state save / load (to disk)
 # ============================================================
 
+LATEST_SESSION_FILE = "output/_latest_session.json"
+
+
 def save_state_to_file(state: Dict, output_dir: str = "output") -> str:
     os.makedirs(output_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -327,6 +334,27 @@ def save_state_to_file(state: Dict, output_dir: str = "output") -> str:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
     return path
+
+
+def save_latest_session(state: Dict):
+    os.makedirs("output", exist_ok=True)
+    with open(LATEST_SESSION_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
+def load_latest_session() -> Optional[Dict]:
+    if not os.path.exists(LATEST_SESSION_FILE):
+        return None
+    try:
+        with open(LATEST_SESSION_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def set_paused_state(session_id: str, state: Dict):
+    with _session_lock:
+        _paused_states[session_id] = state
 
 
 def list_saved_states(output_dir: str = "output") -> List[Dict]:

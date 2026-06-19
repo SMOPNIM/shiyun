@@ -323,6 +323,16 @@
     <div id="statesList"></div>
   </div>
 
+  <!-- Restore card (auto-saved session detected) -->
+  <div class="card" id="restoreCard" style="display:none;border-color:var(--gold-dark)">
+    <div class="card-title" style="color:var(--gold)">♻ 检测到上次的会话</div>
+    <div id="restoreInfo" style="margin-bottom:12px;font-size:0.9em;color:var(--text-secondary)"></div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="restoreBtn" style="font-size:0.85em">▶ 恢复并继续</button>
+      <button class="btn btn-danger" id="dismissRestoreBtn" style="font-size:0.85em">✕ 放弃</button>
+    </div>
+  </div>
+
   <!-- Stats -->
   <div class="card">
     <div class="card-title">📊 实时状态</div>
@@ -443,6 +453,10 @@ const saveFill = document.getElementById('saveFill');
 const pauseOverlay = document.getElementById('pauseOverlay');
 const statesCard = document.getElementById('statesCard');
 const statesList = document.getElementById('statesList');
+const restoreCard = document.getElementById('restoreCard');
+const restoreInfo = document.getElementById('restoreInfo');
+const restoreBtn = document.getElementById('restoreBtn');
+const dismissRestoreBtn = document.getElementById('dismissRestoreBtn');
 
 async function loadPresets() {
   try {
@@ -680,10 +694,15 @@ async function pauseGeneration() {
 async function resumeGeneration() {
   if (isRunning) return;
   try {
+    const body = { session_id: sessionId };
+    if (pausedState) {
+      body.state = pausedState;
+      pausedState = null;
+    }
     const resp = await fetch('/api/resume', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId })
+      body: JSON.stringify(body)
     });
     const data = await resp.json();
     if (data.error) { showToast('错误: ' + data.error, 3000); return; }
@@ -722,6 +741,11 @@ async function stopGeneration() {
 
 async function startGeneration() {
   if (isRunning || isPaused) return;
+
+  // Clear any restored session
+  restoreCard.style.display = 'none';
+  pausedState = null;
+  try { await fetch('/api/clear_latest', { method: 'POST' }); } catch(e) {}
 
   currentChars = getCurrentChars();
   const currentPreset = getCurrentPreset();
@@ -865,6 +889,70 @@ async function loadStateFromDisk(filename) {
 }
 
 // ============================================================
+// Auto-restore session across refresh
+// ============================================================
+
+async function checkLatestSession() {
+  try {
+    const resp = await fetch('/api/latest_session');
+    const data = await resp.json();
+    if (data.state) {
+      const s = data.state;
+      const info = `字符集 ${s.chars ? s.chars.length : 0} 字符 × 最长 ${s.max_length} | 已生成 ${formatNumStr(String(s.generated || 0))} 条`;
+      restoreInfo.textContent = info;
+      restoreCard.dataset.state = JSON.stringify(s);
+      restoreCard.style.display = 'block';
+    }
+  } catch(e) {}
+}
+
+async function restoreLatestSession() {
+  const raw = restoreCard.dataset.state;
+  if (!raw) return;
+  const state = JSON.parse(raw);
+  restoreCard.style.display = 'none';
+
+  pausedState = state;
+  const chars = state.chars || '';
+  currentMaxLen = state.max_length || 1;
+  maxLengthInput.value = currentMaxLen;
+
+  if (chars.length <= 100) {
+    customCharset.value = chars;
+  } else {
+    customCharset.value = '';
+    let foundPreset = '';
+    for (const [key, p] of Object.entries(presetsData)) {
+      if (p.chars === chars) { foundPreset = key; break; }
+    }
+    if (foundPreset) {
+      presetSelect.value = foundPreset;
+    } else {
+      customCharset.value = '[已恢复] 自定义字符集';
+    }
+  }
+
+  currentChars = chars;
+  sessionId = 'default_' + Date.now();
+  resultCount = state.generated || 0;
+
+  genCount.textContent = formatNumStr(String(state.generated || 0));
+  progressLabel.textContent = `已恢复会话 (${formatNumStr(String(state.generated || 0))} 条已生成)`;
+
+  isPaused = true;
+  isRunning = false;
+  updateUI();
+  showToast('已恢复上次会话，点击继续吟诗', 3000);
+}
+
+async function dismissLatestSession() {
+  restoreCard.style.display = 'none';
+  try {
+    await fetch('/api/clear_latest', { method: 'POST' });
+  } catch(e) {}
+}
+
+// ============================================================
 // Event listeners
 // ============================================================
 startBtn.addEventListener('click', startGeneration);
@@ -873,6 +961,8 @@ resumeBtn.addEventListener('click', resumeGeneration);
 stopBtn.addEventListener('click', stopGeneration);
 saveBtn.addEventListener('click', saveGeneration);
 saveStateBtn.addEventListener('click', saveStateToDisk);
+restoreBtn.addEventListener('click', restoreLatestSession);
+dismissRestoreBtn.addEventListener('click', dismissLatestSession);
 
 // Override stop to also pause state cleanup
 const origStop = stopBtn.click;
@@ -885,6 +975,14 @@ document.querySelector('#stopBtn').addEventListener('click', () => {
 loadPresets();
 updateUI();
 refreshStatesList();
+checkLatestSession();
+
+// Auto-save on page unload
+window.addEventListener('beforeunload', () => {
+  if (isRunning || isPaused) {
+    navigator.sendBeacon('/api/auto_save', JSON.stringify({ session_id: sessionId }));
+  }
+});
 
 setInterval(() => {
   if (!isRunning) fetchStats();

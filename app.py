@@ -18,10 +18,13 @@ from generator import (
     clear_paused_state,
     is_stopped,
     list_saved_states,
+    load_latest_session,
     load_state_from_file,
     pause_session,
     save_combinations,
+    save_latest_session,
     save_state_to_file,
+    set_paused_state,
     stop_session,
     stream_combinations,
 )
@@ -119,6 +122,9 @@ def pause():
 def resume():
     data = request.json
     session_id = data.get("session_id", "default")
+    state = data.get("state")
+    if state:
+        set_paused_state(session_id, state)
     paused = get_paused_state(session_id)
     if not paused:
         return jsonify({"error": "没有暂停的会话"}), 404
@@ -253,7 +259,19 @@ def save_state():
         return jsonify({"error": "没有暂停的会话"}), 404
 
     path = save_state_to_file(paused)
+    save_latest_session(paused)
     return jsonify({"status": "saved", "file": os.path.basename(path)})
+
+
+@app.route("/api/auto_save", methods=["POST"])
+def auto_save():
+    data = request.json
+    session_id = data.get("session_id", "default")
+    pause_session(session_id)
+    paused = get_paused_state(session_id)
+    if paused:
+        return jsonify({"status": "saved", "file": os.path.basename(save_state_to_file(paused))})
+    return jsonify({"status": "nothing_to_save"})
 
 
 @app.route("/api/list_states")
@@ -268,6 +286,23 @@ def load_state(filename):
     if not data:
         return jsonify({"error": "保存的状态不存在"}), 404
     return jsonify(data)
+
+
+@app.route("/api/latest_session")
+def latest_session():
+    data = load_latest_session()
+    if not data:
+        return jsonify({"state": None})
+    return jsonify({"state": data})
+
+
+@app.route("/api/clear_latest", methods=["POST"])
+def clear_latest():
+    try:
+        os.remove("output/_latest_session.json")
+    except Exception:
+        pass
+    return jsonify({"status": "cleared"})
 
 
 def main():
