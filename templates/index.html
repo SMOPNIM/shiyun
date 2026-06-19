@@ -242,6 +242,62 @@
   .text-muted { color: var(--text-muted); }
   .text-gold { color: var(--gold); }
 
+  /* Mode toggle */
+  .mode-toggle { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mode-option {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; background: var(--bg-secondary);
+    border: 1px solid var(--border); border-radius: 8px;
+    cursor: pointer; transition: all 0.3s; font-size: 0.9em;
+    user-select: none;
+  }
+  .mode-option:has(input:checked) {
+    border-color: var(--gold); background: rgba(212,168,67,0.1);
+  }
+  .mode-option input { display: none; }
+  .mode-option:hover { border-color: var(--gold-dark); }
+
+  .inline-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  /* Poetry cards */
+  .poem-card {
+    background: linear-gradient(135deg, rgba(30,30,30,0.95), rgba(45,35,20,0.95));
+    border: 1px solid var(--gold-dark); border-radius: 12px;
+    padding: 20px 24px; margin-bottom: 16px;
+    position: relative; animation: poemFadeIn 0.5s ease;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  }
+  .poem-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" opacity="0.03"><path d="M20,30 Q40,20 60,30 Q80,40 70,60 Q60,80 40,70 Q20,60 30,40" fill="none" stroke="%23d4a843" stroke-width="2"/><path d="M50,10 L55,25 L70,30 L55,35 L50,50 L45,35 L30,30 L45,25 Z" fill="%23d4a843" opacity="0.05"/></svg>') no-repeat;
+    background-size: cover; pointer-events: none;
+  }
+  .poem-index {
+    font-size: 0.75em; color: var(--gold-dark); margin-bottom: 12px;
+    letter-spacing: 0.2em; font-weight: 300;
+  }
+  .poem-body { position: relative; z-index: 1; }
+  .poem-line {
+    font-size: 1.3em; line-height: 2; letter-spacing: 0.3em;
+    text-align: center; color: var(--text-primary);
+    font-family: "Noto Serif SC", "STSong", "SimSun", serif;
+    text-shadow: 0 0 20px rgba(212,168,67,0.1);
+    transition: color 0.3s;
+  }
+  .poem-line:hover { color: var(--gold-light); }
+  .poem-line::before { content: '「'; color: var(--gold-dark); opacity: 0.4; }
+  .poem-line::after { content: '」'; color: var(--gold-dark); opacity: 0.4; }
+  .poem-divider {
+    border: none; border-top: 1px solid var(--gold-dark);
+    margin: 8px auto; width: 60%; opacity: 0.2;
+  }
+  .poem-partial { opacity: 0.5; font-style: italic; }
+
+  @keyframes poemFadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
   /* Checkbox */
   .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .checkbox-group input[type="checkbox"] {
@@ -280,6 +336,29 @@
   <!-- Controls -->
   <div class="card">
     <div class="card-title">⚙ 配置</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>模式</label>
+        <div class="mode-toggle">
+          <label class="mode-option" id="modeEnum">
+            <input type="radio" name="mode" value="enum" checked>
+            <span>🔢 枚举模式</span>
+          </label>
+          <label class="mode-option" id="modePoetry">
+            <input type="radio" name="mode" value="poetry">
+            <span>📜 吟诗模式</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group" id="poetryOptions" style="display:none">
+        <label>行长度</label>
+        <div class="inline-group">
+          <label class="mode-option"><input type="radio" name="lineLength" value="5" checked><span>五言</span></label>
+          <label class="mode-option"><input type="radio" name="lineLength" value="7"><span>七言</span></label>
+          <label class="mode-option" style="flex:0"><input type="number" id="customLineLen" value="5" min="1" max="20" style="width:70px;padding:6px 8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;text-align:center"></label>
+        </div>
+      </div>
+    </div>
     <div class="form-row">
       <div class="form-group">
         <label>最大长度</label>
@@ -339,11 +418,11 @@
     <div class="stats-grid">
       <div class="stat-item">
         <div class="value" id="genCount">0</div>
-        <div class="label">已生成</div>
+        <div class="label" id="genCountLabel">已生成</div>
       </div>
       <div class="stat-item">
         <div class="value" id="totalEstimate">0</div>
-        <div class="label">估算总数</div>
+        <div class="label" id="totalEstimateLabel">估算总数</div>
       </div>
       <div class="stat-item">
         <div class="value" id="genRate">0</div>
@@ -457,6 +536,11 @@ const restoreCard = document.getElementById('restoreCard');
 const restoreInfo = document.getElementById('restoreInfo');
 const restoreBtn = document.getElementById('restoreBtn');
 const dismissRestoreBtn = document.getElementById('dismissRestoreBtn');
+const poetryOptions = document.getElementById('poetryOptions');
+const modeRadios = document.querySelectorAll('input[name="mode"]');
+const lineLengthRadios = document.querySelectorAll('input[name="lineLength"]');
+const customLineLen = document.getElementById('customLineLen');
+let currentMode = 'enum';
 
 async function loadPresets() {
   try {
@@ -484,8 +568,12 @@ function updateCharsetInfo() {
   const chars = getCurrentChars();
   const preset = getCurrentPreset();
   const maxLen = Math.max(1, parseInt(maxLengthInput.value) || 0);
+  const mode = currentMode;
+  const lineLen = getCurrentLineLength();
 
-  const payload = preset ? { preset, max_length: maxLen } : { chars, max_length: maxLen };
+  const payload = preset
+    ? { preset, max_length: mode === 'poetry' ? lineLen : maxLen, mode }
+    : { chars, max_length: mode === 'poetry' ? lineLen : maxLen, mode };
   fetch('/api/estimate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -495,8 +583,13 @@ function updateCharsetInfo() {
     .then(data => {
       const totalStr = data.total;
       const isHuge = totalStr.length > 9 || (totalStr.length > 7 && maxLen > 3);
+      let extra = '';
+      if (mode === 'poetry' && data.total_raw && data.total_raw > 0) {
+        const poems = Math.floor(data.total_raw / 4);
+        extra = ` | 约 ${formatNum(poems)} 首诗`;
+      }
       document.getElementById('charsetInfo').textContent =
-        `字符数: ${data.chars_len} | 估算组合: ${isHuge ? '过大' : formatNumStr(totalStr)}`;
+        `字符数: ${data.chars_len} | 估算${mode === 'poetry' ? '行' : '组合'}: ${isHuge ? '过大' : formatNumStr(totalStr)}${extra}`;
 
       if (isHuge) {
         warning.textContent = '⚠ 警告: 组合总数过大，生成和保存可能需要大量时间和内存！建议先用小字符集（如数字）测试。';
@@ -509,6 +602,39 @@ function updateCharsetInfo() {
       document.getElementById('charsetInfo').textContent = `估算组合: 计算失败`;
     });
 }
+
+function getCurrentLineLength() {
+  for (const r of document.querySelectorAll('input[name="lineLength"]')) {
+    if (r.checked) return parseInt(r.value);
+  }
+  return parseInt(document.getElementById('customLineLen').value) || 5;
+}
+
+function getCurrentMode() { return currentMode; }
+
+function setMode(mode) {
+  currentMode = mode;
+  for (const r of document.querySelectorAll('input[name="mode"]')) {
+    r.checked = r.value === mode;
+  }
+  document.getElementById('poetryOptions').style.display = mode === 'poetry' ? '' : 'none';
+  const li = document.getElementById('maxLength');
+  const grp = li && li.closest('.form-group');
+  if (grp) {
+    const lbl = grp.querySelector('label');
+    if (lbl) lbl.style.display = mode === 'poetry' ? 'none' : '';
+    li.style.display = mode === 'poetry' ? 'none' : '';
+  }
+  updateCharsetInfo();
+}
+
+for (const r of document.querySelectorAll('input[name="mode"]')) {
+  r.addEventListener('change', () => { if (r.checked) setMode(r.value); });
+}
+for (const r of document.querySelectorAll('input[name="lineLength"]')) {
+  r.addEventListener('change', updateCharsetInfo);
+}
+document.getElementById('customLineLen').addEventListener('input', updateCharsetInfo);
 
 presetSelect.addEventListener('change', updateCharsetInfo);
 customCharset.addEventListener('input', updateCharsetInfo);
@@ -526,10 +652,21 @@ function startStream(resume = false) {
   }
 
   let url;
-  if (currentPresetName) {
-    url = `/stream?session_id=${encodeURIComponent(sessionId)}&preset=${encodeURIComponent(currentPresetName)}&max_length=${currentMaxLen}`;
+  const mode = currentMode;
+  const baseParams = `session_id=${encodeURIComponent(sessionId)}&mode=${mode}&max_length=${currentMaxLen}`;
+  if (mode === 'poetry') {
+    const ll = getCurrentLineLength();
+    if (currentPresetName) {
+      url = `/stream?${baseParams}&preset=${encodeURIComponent(currentPresetName)}&line_length=${ll}&lines_per_poem=4`;
+    } else {
+      url = `/stream?${baseParams}&chars=${encodeURIComponent(currentChars)}&line_length=${ll}&lines_per_poem=4`;
+    }
   } else {
-    url = `/stream?session_id=${encodeURIComponent(sessionId)}&chars=${encodeURIComponent(currentChars)}&max_length=${currentMaxLen}`;
+    if (currentPresetName) {
+      url = `/stream?${baseParams}&preset=${encodeURIComponent(currentPresetName)}`;
+    } else {
+      url = `/stream?${baseParams}&chars=${encodeURIComponent(currentChars)}`;
+    }
   }
   if (resume) url += '&resume=1';
   eventSource = new EventSource(url);
@@ -541,6 +678,15 @@ function startStream(resume = false) {
     displayBuffer.push(item);
     resultCount++;
     flushDisplay();
+    // If poetry mode, update result counter for poems
+    if (currentMode === 'poetry') {
+      try {
+        const parsed = JSON.parse(item);
+        if (parsed.type === 'poem' && !parsed.partial) {
+          document.getElementById('resultCounter').textContent = `显示 ${resultCount} 首`;
+        }
+      } catch(e2) {}
+    }
   };
 
   eventSource.onerror = () => {
@@ -560,11 +706,33 @@ function flushDisplay() {
   if (displayTimer) return;
   displayTimer = requestAnimationFrame(() => {
     displayTimer = null;
-    const batch = displayBuffer.slice(0, 200);
-    displayBuffer = displayBuffer.slice(200);
+    const batch = displayBuffer.slice(0, 20);
+    displayBuffer = displayBuffer.slice(20);
 
     const fragment = document.createDocumentFragment();
+    const isPoetry = currentMode === 'poetry';
     for (const item of batch) {
+      if (isPoetry) {
+        try {
+          const parsed = JSON.parse(item);
+          if (parsed.type === 'poem') {
+            const card = document.createElement('div');
+            card.className = 'poem-card' + (parsed.partial ? ' poem-partial' : '');
+            let html = `<div class="poem-index">第 ${parsed.index != null ? parsed.index + 1 : '?'} 首</div>`;
+            html += '<div class="poem-body">';
+            for (let i = 0; i < parsed.lines.length; i++) {
+              html += `<div class="poem-line">${parsed.lines[i]}</div>`;
+              if (i < parsed.lines.length - 1 && (i + 1) % 2 === 0) {
+                html += '<hr class="poem-divider">';
+              }
+            }
+            html += '</div>';
+            card.innerHTML = html;
+            fragment.appendChild(card);
+            continue;
+          }
+        } catch(e) {}
+      }
       const el = document.createElement('span');
       el.className = 'result-item';
       el.textContent = item;
@@ -577,7 +745,7 @@ function flushDisplay() {
       while (children.length > MAX_DISPLAY) children[0].remove();
     }
 
-    resultCounter.textContent = `显示 ${children.length} 条`;
+    resultCounter.textContent = `显示 ${children.length} ${currentMode === 'poetry' ? '首' : '条'}`;
     resultsArea.scrollTop = resultsArea.scrollHeight;
   });
 }
@@ -586,6 +754,12 @@ function fetchStats() {
   fetch(`/api/stats?session_id=${encodeURIComponent(sessionId)}`)
     .then(r => r.json())
     .then(data => {
+      const isPoetry = data.mode === 'poetry';
+      const genLabel = document.getElementById('genCountLabel');
+      const totalLabel = document.getElementById('totalEstimateLabel');
+      if (genLabel) genLabel.textContent = isPoetry ? '已生成行' : '已生成';
+      if (totalLabel) totalLabel.textContent = isPoetry ? '估算行数' : '估算总数';
+
       genCount.textContent = formatNumStr(String(data.generated || 0));
       totalEstimate.textContent = formatNumStr(data.total || '0');
       genRate.textContent = formatNum(Math.round(data.rate || 0));
@@ -754,7 +928,7 @@ async function startGeneration() {
   if (!currentChars && !currentPreset) { showToast('请选择或输入字符集', 3000); return; }
 
   resultsArea.innerHTML = '';
-  document.getElementById('resultCounter').textContent = '显示 0 条';
+  document.getElementById('resultCounter').textContent = currentMode === 'poetry' ? '显示 0 首' : '显示 0 条';
   resultCount = 0;
   displayBuffer = [];
   progressFill.style.width = '0%';
@@ -765,9 +939,14 @@ async function startGeneration() {
 
   sessionId = 'default_' + Date.now();
 
+  const mode = currentMode;
+  const poetryLineLen = getCurrentLineLength();
+  const payloadMode = mode;
+  const payloadMaxLen = mode === 'poetry' ? poetryLineLen : currentMaxLen;
+
   const payload = currentPreset
-    ? { session_id: sessionId, preset: currentPreset, max_length: currentMaxLen }
-    : { session_id: sessionId, chars: currentChars, max_length: currentMaxLen };
+    ? { session_id: sessionId, preset: currentPreset, max_length: payloadMaxLen, mode: payloadMode }
+    : { session_id: sessionId, chars: currentChars, max_length: payloadMaxLen, mode: payloadMode };
 
   try {
     const resp = await fetch('/api/start', {
@@ -850,8 +1029,16 @@ async function loadStateFromDisk(filename) {
     // Populate the UI with loaded state
     pausedState = state;
     const chars = state.chars || '';
+    const restoredMode = state._poem_buffer ? 'poetry' : 'enum';
+    setMode(restoredMode);
+    if (restoredMode === 'poetry') {
+      for (const r of document.querySelectorAll('input[name="lineLength"]')) {
+        if (parseInt(r.value) === state.max_length) r.checked = true;
+      }
+      document.getElementById('customLineLen').value = state.max_length || 5;
+    }
     currentMaxLen = state.max_length || 1;
-    maxLengthInput.value = currentMaxLen;
+    maxLengthInput.value = state.max_length || 1;
 
     // Set preset or custom
     if (chars.length <= 100) {
@@ -914,8 +1101,16 @@ async function restoreLatestSession() {
 
   pausedState = state;
   const chars = state.chars || '';
+  const restoredMode = state._poem_buffer ? 'poetry' : 'enum';
+  setMode(restoredMode);
+  if (restoredMode === 'poetry') {
+    for (const r of document.querySelectorAll('input[name="lineLength"]')) {
+      if (parseInt(r.value) === state.max_length) r.checked = true;
+    }
+    document.getElementById('customLineLen').value = state.max_length || 5;
+  }
   currentMaxLen = state.max_length || 1;
-  maxLengthInput.value = currentMaxLen;
+  maxLengthInput.value = state.max_length || 1;
 
   if (chars.length <= 100) {
     customCharset.value = chars;

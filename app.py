@@ -21,6 +21,7 @@ from generator import (
     load_latest_session,
     load_state_from_file,
     pause_session,
+    poetry_stream_combinations,
     save_combinations,
     save_latest_session,
     save_state_to_file,
@@ -74,7 +75,11 @@ def estimate():
     data = request.json
     chars = resolve_chars(data)
     max_len = int(data.get("max_length", 1))
-    total = estimate_total(len(chars), max_len)
+    mode = data.get("mode", "enum")
+    if mode == "poetry":
+        total = estimate_total(len(chars), max_len) - estimate_total(len(chars), max_len - 1)
+    else:
+        total = estimate_total(len(chars), max_len)
     total_str = str(total)
     return jsonify({"total": total_str, "total_raw": total, "chars_len": len(chars)})
 
@@ -85,13 +90,17 @@ def start():
     session_id = data.get("session_id", "default")
     chars = resolve_chars(data)
     max_len = int(data.get("max_length", 1))
+    mode = data.get("mode", "enum")
 
     if not chars:
         return jsonify({"error": "字符集不能为空"}), 400
     if max_len < 1:
         return jsonify({"error": "长度必须大于0"}), 400
 
-    total = estimate_total(len(chars), max_len)
+    if mode == "poetry":
+        total = estimate_total(len(chars), max_len) - estimate_total(len(chars), max_len - 1)
+    else:
+        total = estimate_total(len(chars), max_len)
     return jsonify({
         "status": "ready",
         "total": str(total),
@@ -99,6 +108,7 @@ def start():
         "chars_len": len(chars),
         "max_length": max_len,
         "session_id": session_id,
+        "mode": mode,
     })
 
 
@@ -149,6 +159,9 @@ def stream():
     preset = request.args.get("preset", "")
     chars = request.args.get("chars", "")
     resume = request.args.get("resume", "")
+    mode = request.args.get("mode", "enum")
+    line_length = int(request.args.get("line_length", 5))
+    lines_per_poem = int(request.args.get("lines_per_poem", 4))
     if not chars and preset in PRESETS:
         chars = PRESETS[preset]["chars"]
     max_len = int(request.args.get("max_length", 1))
@@ -165,7 +178,13 @@ def stream():
             clear_paused_state(session_id)
 
     def generate():
-        yield from stream_combinations(session_id, chars, max_len, resume_state=resume_state)
+        if mode == "poetry":
+            yield from poetry_stream_combinations(
+                session_id, chars, max_len,
+                line_length=line_length, lines_per_poem=lines_per_poem,
+                resume_state=resume_state)
+        else:
+            yield from stream_combinations(session_id, chars, max_len, resume_state=resume_state)
 
     return Response(
         generate(),
