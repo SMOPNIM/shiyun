@@ -923,7 +923,7 @@ async function startGeneration() {
 
   currentChars = getCurrentChars();
   const currentPreset = getCurrentPreset();
-  currentMaxLen = parseInt(maxLengthInput.value);
+  currentMaxLen = currentMode === 'poetry' ? getCurrentLineLength() : parseInt(maxLengthInput.value);
   if (!currentMaxLen || currentMaxLen < 1) { showToast('长度必须大于0', 3000); return; }
   if (!currentChars && !currentPreset) { showToast('请选择或输入字符集', 3000); return; }
 
