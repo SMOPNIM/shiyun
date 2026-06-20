@@ -1264,73 +1264,91 @@ function initStarChart() {
   ctx.scale(dpr, dpr);
   const W = rect.width, H = rect.height;
   const cx = W / 2, cy = H / 2;
+  const maxR = Math.min(W, H) * 0.42;
+  const n = allPoems.length;
 
-  const poemArr = allPoems;
+  // Spiral-galaxy particle layout
+  const particles = [];
+  for (let i = 0; i < n; i++) {
+    const r = Math.sqrt(Math.random()) * maxR;
+    const spiralAngle = r * 0.4 + Math.random() * 0.3;
+    const angle = spiralAngle + (i / n) * Math.PI * 2 * 0.1;
+    const x = cx + r * Math.cos(angle);
+    const y = cy + r * Math.sin(angle) * 0.55;
+    const t = r / maxR;
+    const hue = t < 0.3 ? 40 + t * 30 : 50 + (t - 0.3) * 270;
+    const hueClamped = Math.min(360, Math.max(0, hue));
+    const sat = 60 + Math.random() * 30;
+    const light = 40 + Math.random() * 30;
+    const size = 1 + Math.random();
+    const alpha = 0.4 + Math.random() * 0.6;
+    particles.push({ dx: x - cx, dy: y - cy, hue: hueClamped, sat, light, size, alpha, lines: allPoems[i] });
+  }
 
-  const stars = poemArr.map((lines) => {
-    const angleOff = Math.random() * Math.PI * 2;
-    const speed = 0.3 + Math.random() * 0.7;
-    const maxR = Math.min(W, H) / 2 - 60;
-    const rx = 40 + Math.random() * Math.max(0, maxR);
-    const ry = 20 + Math.random() * Math.max(0, rx * 0.4);
-    const hue = 35 + Math.random() * 20;
-    const size = 1.5 + Math.random() * 2.5;
-    const opacity = 0.5 + Math.random() * 0.5;
-    return { lines, angleOff, speed, rx, ry, hue, size, opacity };
-  });
+  // Nebula glow clouds
+  const clouds = [
+    { r: 80, g: 40, b: 100, a: 0.07, ox: -30, oy: -20 },
+    { r: 50, g: 60, b: 140, a: 0.05, ox: 40, oy: 15 },
+    { r: 140, g: 80, b: 40, a: 0.04, ox: -10, oy: 35 },
+  ];
 
   if (starChartAnimId) cancelAnimationFrame(starChartAnimId);
 
   starChartAnimId = requestAnimationFrame(function animate(time) {
     const t = time / 1000;
+    const rot = t * 0.025;
+    const cos = Math.cos(rot), sin = Math.sin(rot);
     ctx.clearRect(0, 0, W, H);
 
     // Background twinkle stars
     for (let i = 0; i < 120; i++) {
       const sx = ((i * 137.5 + 50) % W);
       const sy = ((i * 97.3 + 20) % H);
-      const sb = 0.15 + Math.sin(t * 0.7 + i * 1.3) * 0.12;
-      ctx.fillStyle = `rgba(255,255,240,${Math.max(0, sb)})`;
-      ctx.fillRect(sx, sy, 1.2, 1.2);
+      const sb = 0.10 + Math.sin(t * 0.5 + i * 1.3) * 0.10;
+      ctx.fillStyle = `rgba(255,255,240,${Math.max(0.02, sb)})`;
+      ctx.fillRect(sx, sy, 1, 1);
+    }
+
+    // Nebula glow clouds
+    for (const c of clouds) {
+      const rxo = c.ox * cos - c.oy * sin;
+      const ryo = c.ox * sin + c.oy * cos;
+      const grad = ctx.createRadialGradient(cx + rxo, cy + ryo, 0, cx + rxo, cy + ryo, maxR * 0.7);
+      grad.addColorStop(0, `rgba(${c.r},${c.g},${c.b},${c.a})`);
+      grad.addColorStop(1, `rgba(${c.r},${c.g},${c.b},0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx + rxo, cy + ryo, maxR * 0.7, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     // Sun glow
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 90);
-    grad.addColorStop(0, 'rgba(255,220,100,0.7)');
-    grad.addColorStop(0.2, 'rgba(255,190,70,0.25)');
-    grad.addColorStop(1, 'rgba(255,190,70,0)');
-    ctx.fillStyle = grad;
+    const sgrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR * 0.25);
+    sgrad.addColorStop(0, 'rgba(255,220,100,0.6)');
+    sgrad.addColorStop(0.3, 'rgba(255,180,60,0.12)');
+    sgrad.addColorStop(1, 'rgba(255,180,60,0)');
+    ctx.fillStyle = sgrad;
     ctx.beginPath();
-    ctx.arc(cx, cy, 90, 0, Math.PI * 2);
+    ctx.arc(cx, cy, maxR * 0.25, 0, Math.PI * 2);
     ctx.fill();
 
     // Sun
     ctx.shadowColor = '#f0c040';
-    ctx.shadowBlur = 35;
+    ctx.shadowBlur = 25;
     ctx.fillStyle = '#f5d060';
     ctx.beginPath();
-    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 11, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Orbiting stars
+    // Nebula particles
     const positions = [];
-    for (const s of stars) {
-      const angle = s.angleOff + s.speed * t;
-      const x = cx + s.rx * Math.cos(angle);
-      const y = cy + s.ry * Math.sin(angle);
-      positions.push({ x, y, lines: s.lines });
-
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(angle + Math.PI / 2);
-      ctx.fillStyle = `hsla(${s.hue}, 80%, 60%, ${s.opacity})`;
-      ctx.shadowColor = `hsla(${s.hue}, 80%, 60%, 0.3)`;
-      ctx.shadowBlur = 6;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, s.size, s.size * 0.55, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+    for (const p of particles) {
+      const rx = cx + p.dx * cos - p.dy * sin;
+      const ry = cy + p.dx * sin + p.dy * cos;
+      positions.push({ x: rx, y: ry, lines: p.lines });
+      ctx.fillStyle = `hsla(${p.hue}, ${p.sat}%, ${p.light}%, ${p.alpha})`;
+      ctx.fillRect(rx, ry, p.size, p.size);
     }
 
     canvas._starPositions = positions;
