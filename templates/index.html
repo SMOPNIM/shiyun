@@ -508,7 +508,6 @@ let pausedState = null;
 let allPoems = [];
 let starChartActive = false;
 let starChartAnimId = null;
-const MAX_STARS = 300;
 
 function formatNumStr(s) {
   if (s.length > 12) return '过大';
@@ -1266,7 +1265,7 @@ function initStarChart() {
   const W = rect.width, H = rect.height;
   const cx = W / 2, cy = H / 2;
 
-  const poemArr = allPoems.length > MAX_STARS ? allPoems.slice(-MAX_STARS) : allPoems;
+  const poemArr = allPoems;
 
   const stars = poemArr.map((lines) => {
     const angleOff = Math.random() * Math.PI * 2;
