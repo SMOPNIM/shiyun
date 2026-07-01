@@ -62,6 +62,24 @@ def build_utf8_charset() -> str:
 
 UTF8_ALL = build_utf8_charset()
 
+
+def build_lns_charset() -> str:
+    """Unicode 中所有数字 (N) + 字母 (L) + 符号 (S)，含 CJK"""
+    chars = []
+    for cp in range(0x20, 0x110000):
+        try:
+            ch = chr(cp)
+            cat = unicodedata.category(ch)
+            if cat and cat[0] in "LNS":
+                chars.append(ch)
+        except (ValueError, UnicodeEncodeError):
+            pass
+    return "".join(chars)
+
+
+UTF8_LNS = build_lns_charset()
+
+
 PRESETS = {
     "ascii": {
         "label": "ASCII可打印字符",
@@ -97,6 +115,11 @@ PRESETS = {
         "label": "全部UTF-8可打印字符",
         "chars": UTF8_ALL,
         "description": f"所有Unicode可打印字符，共{len(UTF8_ALL)}个",
+    },
+    "full_lns": {
+        "label": "数字+字母+符号+中文",
+        "chars": UTF8_LNS,
+        "description": f"Unicode所有数字、字母、符号、中文，共{len(UTF8_LNS)}个",
     },
 }
 

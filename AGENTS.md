@@ -48,6 +48,8 @@ No tests, no CI, no linter/typecheck config.
 
 Preset `{"cjk_sample"}` = 千字文 (1000 unique CJK chars).
 
+Preset `{"full_lns"}` = all Unicode digits, letters, symbols, and Chinese (~115k chars, built at import time).
+
 ## Refresh-Persistence Flow
 
 1. `beforeunload` → `sendBeacon('/api/auto_save', {session_id})` → server pauses + writes `output/_latest_session.json`
